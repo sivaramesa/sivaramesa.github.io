@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#2563eb" />
+  <meta name="description" content="Offline-first ledger PWA with Firebase sync, account heads, income/expense, GST, reports and balance sheet" />
+  <title>Ledger Tracker</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- ============ AUTH SCREEN ============ -->
+  <section id="auth-screen" class="screen auth-screen">
+    <div class="auth-card">
+      <div class="brand">
+        <div class="brand-logo">₹</div>
+        <h1>Ledger Tracker</h1>
+        <p class="brand-sub">Accounts, income &amp; expenses with proof</p>
+      </div>
+
+      <form id="login-form" class="auth-form">
+        <h2 id="auth-title">Sign in</h2>
+
+        <label class="field" id="name-field" hidden>
+          <span>Full name</span>
+          <input type="text" id="auth-name" autocomplete="name" placeholder="Your name" />
+        </label>
+
+        <label class="field">
+          <span>Email</span>
+          <input type="email" id="auth-email" autocomplete="email" required placeholder="you@example.com" />
+        </label>
+
+        <label class="field">
+          <span>Password</span>
+          <input type="password" id="auth-password" autocomplete="current-password" required minlength="6" placeholder="••••••••" />
+        </label>
+
+        <p id="auth-error" class="auth-error" role="alert" hidden></p>
+
+        <button type="submit" id="auth-submit" class="btn btn-primary btn-block">Sign in</button>
+
+        <p class="auth-toggle">
+          <span id="auth-toggle-text">New here?</span>
+          <button type="button" id="auth-toggle-btn" class="link-btn">Create an account</button>
+        </p>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============ APP SHELL ============ -->
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <div class="topbar-left">
+        <strong class="topbar-title">Ledger Tracker</strong>
+        <span id="sync-status" class="sync-status" title="Sync status">●</span>
+      </div>
+      <div class="topbar-right">
+        <span id="current-user" class="current-user"></span>
+        <button id="logout-btn" class="btn btn-ghost btn-sm">Logout</button>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="add">Add</button>
+      <button class="tab-btn" data-tab="list">Entries</button>
+      <button class="tab-btn" data-tab="history">History</button>
+      <button class="tab-btn" data-tab="accounts">Accounts</button>
+      <button class="tab-btn" data-tab="reports">Reports</button>
+    </nav>
+
+    <main class="content">
+      <!-- ADD ENTRY -->
+      <section id="tab-add" class="tab-panel active">
+        <form id="entry-form" class="card form-card">
+          <h2>Add entry</h2>
+
+          <div class="type-toggle" role="tablist" aria-label="Entry type">
+            <button type="button" class="type-btn active" data-type="expense">Expense</button>
+            <button type="button" class="type-btn" data-type="income">Income</button>
+          </div>
+          <input type="hidden" id="entry-type" value="expense" />
+
+          <label class="field">
+            <span>Account head / project</span>
+            <select id="entry-account" required>
+              <option value="">Select account head</option>
+            </select>
+            <small class="hint" id="no-accounts-hint" hidden>
+              No account heads yet. Create one in the Accounts tab.
+            </small>
+          </label>
+
+          <label class="field">
+            <span>Amount (₹, before GST)</span>
+            <input type="number" id="entry-amount" step="0.01" min="0.01" required placeholder="0.00" inputmode="decimal" />
+          </label>
+
+          <label class="field">
+            <span>Category</span>
+            <input type="text" id="entry-category" list="category-list" placeholder="e.g. Materials, Sales, Rent" />
+            <datalist id="category-list">
+              <option>Sales</option><option>Services</option><option>Materials</option>
+              <option>Labour</option><option>Transport</option><option>Utilities</option>
+              <option>Rent</option><option>Food</option><option>Misc</option>
+            </datalist>
+          </label>
+
+          <label class="field">
+            <span>Description</span>
+            <input type="text" id="entry-description" maxlength="160" placeholder="Notes / reference" />
+          </label>
+
+          <div class="field-row">
+            <label class="field">
+              <span>Date</span>
+              <input type="date" id="entry-date" required />
+            </label>
+            <label class="field">
+              <span>Time (optional)</span>
+              <input type="time" id="entry-time" />
+            </label>
+          </div>
+
+          <!-- GST (optional) -->
+          <div class="gst-block">
+            <label class="checkbox-field">
+              <input type="checkbox" id="gst-enabled" />
+              <span>Apply GST (optional)</span>
+            </label>
+            <div id="gst-fields" class="field-row" hidden>
+              <label class="field">
+                <span>GST rate (%)</span>
+                <input type="number" id="gst-rate" step="0.01" min="0" value="18" inputmode="decimal" />
+              </label>
+              <div class="field">
+                <span>GST / Total</span>
+                <div class="gst-preview">
+                  <span id="gst-amount-preview">₹0.00</span>
+                  <strong id="gst-total-preview">₹0.00</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Photo proof (optional)</span>
+            <input type="file" id="entry-photo" accept="image/*" capture="environment" />
+          </label>
+          <div id="photo-preview-wrap" class="photo-preview-wrap" hidden>
+            <img id="photo-preview" class="photo-preview" alt="Photo proof preview" />
+            <button type="button" id="photo-remove" class="btn btn-ghost btn-sm">Remove</button>
+          </div>
+
+          <p id="entry-error" class="auth-error" role="alert" hidden></p>
+
+          <button type="submit" id="entry-submit" class="btn btn-primary btn-block">Save entry</button>
+        </form>
+      </section>
+
+      <!-- ENTRY LIST -->
+      <section id="tab-list" class="tab-panel">
+        <div class="list-toolbar">
+          <input type="search" id="list-search" placeholder="Search description / category / person" />
+        </div>
+        <div class="list-toolbar">
+          <select id="list-account-filter">
+            <option value="">All accounts</option>
+          </select>
+          <select id="list-type-filter">
+            <option value="">All types</option>
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+          </select>
+        </div>
+        <div class="list-summary" id="list-summary"></div>
+        <div id="entry-list" class="expense-list"></div>
+        <p id="list-empty" class="empty-note" hidden>No entries yet.</p>
+      </section>
+
+      <!-- HISTORY -->
+      <section id="tab-history" class="tab-panel">
+        <div class="list-toolbar">
+          <input type="search" id="history-search" placeholder="Search all transactions" />
+        </div>
+        <div class="list-toolbar">
+          <select id="history-account-filter">
+            <option value="">All accounts</option>
+          </select>
+          <select id="history-type-filter">
+            <option value="">All types</option>
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+          </select>
+        </div>
+        <div class="history-summary" id="history-summary"></div>
+        <div id="history-list" class="history-list"></div>
+        <p id="history-empty" class="empty-note" hidden>No transactions yet.</p>
+      </section>
+
+      <!-- ACCOUNTS -->
+      <section id="tab-accounts" class="tab-panel">
+        <form id="account-form" class="card form-card">
+          <h2>New account head</h2>
+          <label class="field">
+            <span>Name</span>
+            <input type="text" id="account-name" required maxlength="80" placeholder="e.g. Site A / Client X / Office" />
+          </label>
+          <div class="field-row">
+            <label class="field">
+              <span>Type</span>
+              <select id="account-type">
+                <option value="project">Project</option>
+                <option value="asset">Asset</option>
+                <option value="liability">Liability</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Opening balance (₹)</span>
+              <input type="number" id="account-opening" step="0.01" value="0" inputmode="decimal" />
+            </label>
+          </div>
+          <label class="field">
+            <span>Description</span>
+            <input type="text" id="account-description" maxlength="160" placeholder="Optional" />
+          </label>
+          <p id="account-error" class="auth-error" role="alert" hidden></p>
+          <button type="submit" id="account-submit" class="btn btn-primary btn-block">Create account head</button>
+        </form>
+
+        <div id="account-list" class="account-list"></div>
+        <p id="accounts-empty" class="empty-note" hidden>No account heads yet.</p>
+      </section>
+
+      <!-- REPORTS -->
+      <section id="tab-reports" class="tab-panel">
+        <div class="card">
+          <label class="checkbox-field">
+            <input type="checkbox" id="report-use-total" />
+            <span>Use GST-inclusive totals in reports</span>
+          </label>
+          <label class="field">
+            <span>Filter by account (optional)</span>
+            <select id="report-account-filter">
+              <option value="">All accounts</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="card">
+          <h2>Monthly report</h2>
+          <label class="field">
+            <span>Month</span>
+            <input type="month" id="report-month" />
+          </label>
+          <button id="run-monthly" class="btn btn-primary btn-block">Generate monthly report</button>
+        </div>
+
+        <div class="card">
+          <h2>Custom range report</h2>
+          <div class="field-row">
+            <label class="field">
+              <span>Start date</span>
+              <input type="date" id="report-start" />
+            </label>
+            <label class="field">
+              <span>End date</span>
+              <input type="date" id="report-end" />
+            </label>
+          </div>
+          <button id="run-range" class="btn btn-primary btn-block">Generate range report</button>
+        </div>
+
+        <div class="card">
+          <h2>Balance sheet</h2>
+          <p class="hint">Opening balance + income − expenses = closing balance, grouped by account head.</p>
+          <div class="field-row">
+            <label class="field">
+              <span>Start date</span>
+              <input type="date" id="bs-start" />
+            </label>
+            <label class="field">
+              <span>End date</span>
+              <input type="date" id="bs-end" />
+            </label>
+          </div>
+          <button id="run-balance-sheet" class="btn btn-primary btn-block">Generate balance sheet</button>
+        </div>
+
+        <!-- Report output -->
+        <div id="report-output" class="report-output" hidden>
+          <div class="card report-summary">
+            <h3 id="report-heading">Report</h3>
+            <div class="stat"><span>Income</span><strong id="report-income" class="pos">₹0.00</strong></div>
+            <div class="stat"><span>Expense</span><strong id="report-expense" class="neg">₹0.00</strong></div>
+            <div class="stat"><span>Net</span><strong id="report-net">₹0.00</strong></div>
+            <div class="stat"><span>GST</span><strong id="report-gst">₹0.00</strong></div>
+            <div class="stat"><span>Entries</span><strong id="report-count">0</strong></div>
+            <button id="report-export" class="btn btn-ghost btn-sm">Export CSV</button>
+          </div>
+          <div class="card">
+            <h4>By account head</h4>
+            <div id="report-by-account" class="report-breakdown"></div>
+          </div>
+          <div class="card">
+            <h4>By category</h4>
+            <div id="report-by-category" class="report-breakdown"></div>
+          </div>
+          <div class="card">
+            <h4>By person</h4>
+            <div id="report-by-person" class="report-breakdown"></div>
+          </div>
+        </div>
+
+        <!-- Balance sheet output -->
+        <div id="bs-output" class="report-output" hidden>
+          <div class="card">
+            <h3 id="bs-heading">Balance sheet</h3>
+            <div class="bs-table-wrap">
+              <table class="bs-table">
+                <thead>
+                  <tr><th>Account</th><th>Opening</th><th>Income</th><th>Expense</th><th>Closing</th></tr>
+                </thead>
+                <tbody id="bs-rows"></tbody>
+                <tfoot>
+                  <tr>
+                    <td>Totals</td>
+                    <td id="bs-opening-total">₹0.00</td>
+                    <td id="bs-income-total" class="pos">₹0.00</td>
+                    <td id="bs-expense-total" class="neg">₹0.00</td>
+                    <td id="bs-closing-total">₹0.00</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <div class="bs-gst">
+              <div class="stat"><span>GST collected</span><strong id="bs-gst-collected">₹0.00</strong></div>
+              <div class="stat"><span>GST paid</span><strong id="bs-gst-paid">₹0.00</strong></div>
+              <div class="stat"><span>Net GST</span><strong id="bs-gst-net">₹0.00</strong></div>
+            </div>
+            <button id="bs-export" class="btn btn-ghost btn-sm">Export CSV</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
