@@ -101,6 +101,11 @@ html, body {
   display: grid; place-items: center;
   font-size: 30px; font-weight: 700;
 }
+.brand-logo-img {
+  width: 88px; height: 88px; margin: 0 auto 12px; display: block;
+  border-radius: 20px;
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.4);
+}
 .brand h1 { margin: 0; font-size: 22px; }
 .brand-sub { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
 .auth-form h2 { margin: 0 0 16px; font-size: 18px; }
@@ -369,3 +374,19 @@ small.hint { display: block; }
 .sync-status.syncing { color: var(--primary); animation: sync-spin 1s linear infinite; display: inline-block; }
 .sync-status.pending { color: #fbbf24; }
 @keyframes sync-spin { to { transform: rotate(360deg); } }
+
+/* ============ Top-bar logo + sync button ============ */
+.topbar-logo {
+  width: 26px; height: 26px; border-radius: 7px; display: block;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; padding: 0;
+  background: transparent; color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.icon-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--primary); }
+.icon-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.icon-btn.spinning svg { animation: sync-spin 0.9s linear infinite; }

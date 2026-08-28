@@ -2,7 +2,7 @@
  * App-shell caching for offline use. Firebase SDK + API calls are
  * network-first (Firestore has its own offline persistence).
  */
-const CACHE_VERSION = 'ledger-tracker-v3';
+const CACHE_VERSION = 'ledger-tracker-v4';
 const APP_SHELL = [
   './',
   './index.html',
@@ -20,7 +20,8 @@ const APP_SHELL = [
   './js/ui.js',
   './js/utils.js',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  './icons/logo.png'
 ];
 
 self.addEventListener('install', (event) => {

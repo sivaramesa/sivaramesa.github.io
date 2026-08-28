@@ -237,6 +237,9 @@ function wireAppControls() {
     UI.toast('Signed out.', 'info');
   });
 
+  // Manual "sync now" button.
+  UI.$('#sync-btn').addEventListener('click', handleManualSync);
+
   // Entry type toggle
   document.querySelectorAll('.type-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -456,6 +459,41 @@ async function handleAddAccount(e) {
     errEl.hidden = false;
   } finally {
     submit.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Manual sync
+// ---------------------------------------------------------------------------
+async function handleManualSync() {
+  const btn = UI.$('#sync-btn');
+  if (!navigator.onLine) {
+    UI.toast('You are offline. Changes will sync when you reconnect.', 'info');
+    return;
+  }
+  btn.classList.add('spinning');
+  btn.disabled = true;
+  try {
+    const res = await Sync.flush();
+    if (Auth.current()) {
+      state.entries = await Entries.getAllLocal();
+      state.accounts = await Accounts.getAllLocal();
+      renderEntries();
+      renderHistory();
+      renderAccounts();
+    }
+    if (res && res.pushed > 0) {
+      UI.toast(`Synced ${res.pushed} change${res.pushed === 1 ? '' : 's'} to cloud.`, 'success');
+    } else if (res && res.failed) {
+      UI.toast('Sync had trouble. Will retry.', 'error');
+    } else {
+      UI.toast('Everything is up to date.', 'success');
+    }
+  } catch (e) {
+    UI.toast('Sync failed: ' + (e && e.message), 'error');
+  } finally {
+    btn.classList.remove('spinning');
+    btn.disabled = false;
   }
 }
 
