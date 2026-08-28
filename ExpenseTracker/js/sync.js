@@ -18,7 +18,6 @@ import {
   collection,
   getDocsFromServer
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-import { db } from './firebase-config.js';
 import { DB } from './db.js';
 
 const COLLECTIONS = {

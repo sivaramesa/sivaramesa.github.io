@@ -7,6 +7,8 @@ import { Accounts } from './accounts.js';
 import { Sync } from './sync.js';
 import { Reports } from './reports.js';
 import { UI } from './ui.js';
+import { Cropper } from './crop.js';
+import { compressImage, ATTACH_LIMITS } from './storage.js';
 import {
   authErrorMessage,
   isoToTimeInput,
@@ -22,7 +24,7 @@ const state = {
   accounts: [],
   filters: { text: '', accountId: '', type: '' },
   historyFilters: { text: '', accountId: '', type: '' },
-  photoFile: null,
+  attachments: [],   // File[] selected for the current entry
   entryType: 'expense',
   lastReport: null,
   lastBalanceSheet: null,
@@ -43,6 +45,7 @@ async function boot() {
   wireAuthForm();
   wireAppControls();
   wireConnectivity();
+  Cropper.init();
 
   Auth.onChange(async (user) => {
     if (user) {
@@ -109,6 +112,15 @@ function wireAuthForm() {
 // Signed-in flow
 // ---------------------------------------------------------------------------
 async function onSignedIn() {
+  try {
+    await loadAndWire();
+  } catch (e) {
+    console.error('Post-login setup error:', e);
+    UI.toast('Signed in, but data setup had trouble: ' + (e && e.message), 'error', 6000);
+  }
+}
+
+async function loadAndWire() {
   // Instant render from local cache.
   state.accounts = await Accounts.getAllLocal();
   state.entries = await Entries.getAllLocal();
@@ -193,6 +205,51 @@ function renderHistory() {
   );
 }
 
+function renderAttachmentPreview() {
+  UI.renderAttachmentPreview(state.attachments, (index) => {
+    state.attachments.splice(index, 1);
+    renderAttachmentPreview();
+  });
+}
+
+// Handle newly selected images: optional crop, then compress to the size
+// budget, enforcing the max attachment count.
+async function processIncoming(fileList) {
+  const incoming = Array.from(fileList || []);
+  for (const original of incoming) {
+    if (state.attachments.length >= ATTACH_LIMITS.MAX_ATTACHMENTS) {
+      UI.toast(`Max ${ATTACH_LIMITS.MAX_ATTACHMENTS} attachments per entry.`, 'error');
+      break;
+    }
+    if (!original.type || !original.type.startsWith('image/')) {
+      // Non-image: keep as-is (still zipped later).
+      state.attachments.push(original);
+      renderAttachmentPreview();
+      continue;
+    }
+    try {
+      // 1) Offer a crop step. 'skip' -> use original; null -> cancel this file.
+      const cropped = await Cropper.open(original);
+      if (cropped === null) continue;
+      const source = cropped === 'skip' ? original : cropped;
+
+      // 2) Compress to the target byte budget.
+      const blob = await compressImage(source);
+      const name = (original.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
+      const file = new File([blob], name, { type: 'image/jpeg' });
+      file._sizeLabel = formatKb(blob.size);
+      state.attachments.push(file);
+      renderAttachmentPreview();
+    } catch (e) {
+      UI.toast('Could not process image: ' + (e && e.message), 'error');
+    }
+  }
+}
+
+function formatKb(bytes) {
+  return Math.max(1, Math.round(bytes / 1024)) + ' KB';
+}
+
 async function handleDeleteEntry(entry) {
   if (!confirm('Delete this transaction? This cannot be undone.')) return;
   try {
@@ -258,24 +315,14 @@ function wireAppControls() {
   UI.$('#gst-rate').addEventListener('input', updateGstPreview);
   UI.$('#entry-amount').addEventListener('input', updateGstPreview);
 
-  // Photo preview
-  const photoInput = UI.$('#entry-photo');
-  photoInput.addEventListener('change', () => {
-    const file = photoInput.files && photoInput.files[0];
-    state.photoFile = file || null;
-    const wrap = UI.$('#photo-preview-wrap');
-    if (file) {
-      UI.$('#photo-preview').src = URL.createObjectURL(file);
-      wrap.hidden = false;
-    } else {
-      wrap.hidden = true;
-    }
-  });
-  UI.$('#photo-remove').addEventListener('click', () => {
-    state.photoFile = null;
-    photoInput.value = '';
-    UI.$('#photo-preview-wrap').hidden = true;
-  });
+  // Attachments: camera (single shot) + file picker (multiple).
+  const cameraInput = UI.$('#attach-camera-input');
+  const fileInput = UI.$('#attach-file-input');
+  UI.$('#attach-camera-btn').addEventListener('click', () => cameraInput.click());
+  UI.$('#attach-file-btn').addEventListener('click', () => fileInput.click());
+
+  cameraInput.addEventListener('change', () => { processIncoming(cameraInput.files); cameraInput.value = ''; });
+  fileInput.addEventListener('change', () => { processIncoming(fileInput.files); fileInput.value = ''; });
 
   UI.$('#entry-form').addEventListener('submit', handleAddEntry);
   UI.$('#account-form').addEventListener('submit', handleAddAccount);
@@ -399,12 +446,12 @@ async function handleAddEntry(e) {
 
   const submit = UI.$('#entry-submit');
   submit.disabled = true;
-  submit.textContent = state.photoFile ? 'Uploading…' : 'Saving…';
+  submit.textContent = state.attachments.length ? 'Uploading…' : 'Saving…';
 
   try {
     await Entries.create(
       { type: state.entryType, accountId, amount, category, description, dateIso, gstEnabled, gstRate },
-      state.photoFile
+      state.attachments
     );
 
     // Reset form (keep the selected type + account + date for fast repeat entry).
@@ -415,9 +462,8 @@ async function handleAddEntry(e) {
     UI.$('#gst-enabled').checked = false;
     UI.$('#gst-fields').hidden = true;
     updateGstPreview();
-    state.photoFile = null;
-    UI.$('#entry-photo').value = '';
-    UI.$('#photo-preview-wrap').hidden = true;
+    state.attachments = [];
+    renderAttachmentPreview();
 
     state.entries = await Entries.getAllLocal();
     renderEntries();

@@ -14,6 +14,13 @@ function accountName(accounts, id) {
   return a ? a.name : 'Unassigned';
 }
 
+// A tag/link for an entry's zipped attachment bundle (if any).
+function attachmentTag(e) {
+  if (!e.attachmentUrl) return '';
+  const n = e.attachmentCount || 1;
+  return `<a class="entry-attach-tag" href="${escapeHtml(e.attachmentUrl)}" target="_blank" rel="noopener" download title="Download attachment zip">📎 ${n} file${n === 1 ? '' : 's'} (.zip)</a>`;
+}
+
 export const UI = {
   $,
 
@@ -184,12 +191,6 @@ export const UI = {
         ? `<span class="entry-gst">GST ${e.gstRate}% · ${formatMoney(e.gstAmount)}</span>`
         : '';
 
-      const photoHtml = e.photoUrl
-        ? `<a class="expense-photo" href="${escapeHtml(e.photoUrl)}" target="_blank" rel="noopener">
-             <img src="${escapeHtml(e.photoUrl)}" alt="Proof" loading="lazy" />
-           </a>`
-        : '';
-
       card.innerHTML = `
         <div class="expense-main">
           <div class="expense-top">
@@ -200,13 +201,13 @@ export const UI = {
           <div class="entry-tags">
             <span class="entry-account-tag">${escapeHtml(acct)}</span>
             ${gstHtml}
+            ${attachmentTag(e)}
           </div>
           <div class="expense-meta">
             <span class="expense-who">${escapeHtml(who)}${mine ? ' (you)' : ''}</span>
             <span class="expense-when">${escapeHtml(formatDateTime(e.date))}</span>
           </div>
         </div>
-        ${photoHtml}
         <button class="expense-del btn btn-ghost btn-sm" title="Delete" aria-label="Delete entry">✕</button>
       `;
 
@@ -302,6 +303,7 @@ export const UI = {
               <span class="entry-account-tag">${escapeHtml(acct)}</span>
               ${e.category ? `<span class="entry-cat-tag">${escapeHtml(e.category)}</span>` : ''}
               ${gstHtml}
+              ${attachmentTag(e)}
               <span class="history-who">${escapeHtml(who)}${mine ? ' (you)' : ''}</span>
             </div>
           </div>
@@ -311,6 +313,48 @@ export const UI = {
         listEl.appendChild(row);
       }
     }
+  },
+
+  /** Thumbnail previews of the attachments selected for the current entry. */
+  renderAttachmentPreview(files, onRemove) {
+    const wrap = $('#attach-preview');
+    wrap.innerHTML = '';
+    if (!files || !files.length) {
+      wrap.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+    files.forEach((file, i) => {
+      const thumb = document.createElement('div');
+      thumb.className = 'attach-thumb';
+      const isImg = file.type && file.type.startsWith('image/');
+      if (isImg) {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        img.alt = file.name || 'attachment';
+        img.onload = () => URL.revokeObjectURL(img.src);
+        thumb.appendChild(img);
+      } else {
+        const doc = document.createElement('span');
+        doc.className = 'attach-doc';
+        doc.textContent = '📄';
+        thumb.appendChild(doc);
+      }
+      if (file._sizeLabel) {
+        const size = document.createElement('span');
+        size.className = 'attach-size';
+        size.textContent = file._sizeLabel;
+        thumb.appendChild(size);
+      }
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'attach-thumb-del';
+      del.setAttribute('aria-label', 'Remove attachment');
+      del.textContent = '✕';
+      del.addEventListener('click', () => onRemove(i));
+      thumb.appendChild(del);
+      wrap.appendChild(thumb);
+    });
   },
 
   renderReport(report) {

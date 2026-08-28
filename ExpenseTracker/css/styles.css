@@ -16,6 +16,11 @@
 
 * { box-sizing: border-box; }
 
+/* Ensure the hidden attribute always wins over display rules below
+   (e.g. .app and .auth-screen use display:flex which would otherwise
+   override the browser default of [hidden] { display:none }). */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -390,3 +395,71 @@ small.hint { display: block; }
 .icon-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--primary); }
 .icon-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .icon-btn.spinning svg { animation: sync-spin 0.9s linear infinite; }
+
+/* ============ Attachments ============ */
+.attach-buttons { display: flex; gap: 8px; margin-bottom: 6px; }
+.attach-preview { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0 14px; }
+.attach-thumb {
+  position: relative; width: 72px; height: 72px;
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  background: var(--surface-2);
+  display: grid; place-items: center;
+}
+.attach-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.attach-doc { font-size: 30px; }
+.attach-thumb-del {
+  position: absolute; top: 2px; right: 2px;
+  width: 22px; height: 22px; padding: 0;
+  border: none; border-radius: 50%;
+  background: rgba(15, 23, 42, 0.8); color: #fff;
+  font-size: 12px; line-height: 1; cursor: pointer;
+  display: grid; place-items: center;
+}
+.attach-thumb-del:hover { background: var(--danger); }
+
+.entry-attach-tag {
+  font-size: 12px; color: #a5b4fc; text-decoration: none;
+  background: rgba(129, 140, 248, 0.15);
+  padding: 2px 8px; border-radius: 999px;
+}
+.entry-attach-tag:hover { text-decoration: underline; }
+
+/* ============ Crop modal ============ */
+.crop-modal {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(2, 6, 23, 0.8);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.crop-dialog {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 18px; width: 100%; max-width: 480px;
+  box-shadow: var(--shadow);
+}
+.crop-title { margin: 0 0 12px; font-size: 17px; }
+.crop-stage {
+  position: relative; width: 100%; max-height: 60vh;
+  display: flex; align-items: center; justify-content: center;
+  background: #0b1220; border-radius: 10px; overflow: hidden;
+  user-select: none; touch-action: none;
+}
+.crop-stage img { max-width: 100%; max-height: 60vh; display: block; pointer-events: none; }
+.crop-box {
+  position: absolute; box-sizing: border-box;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 9999px rgba(2, 6, 23, 0.55);
+  cursor: move; touch-action: none;
+}
+.crop-handle {
+  position: absolute; right: -9px; bottom: -9px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--primary); border: 2px solid #fff; cursor: nwse-resize;
+}
+.crop-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+/* attachment thumbnail size label */
+.attach-size {
+  position: absolute; left: 0; bottom: 0; right: 0;
+  font-size: 10px; text-align: center;
+  background: rgba(2, 6, 23, 0.7); color: #fff; padding: 1px 0;
+}

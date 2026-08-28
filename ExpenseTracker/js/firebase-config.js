@@ -25,12 +25,12 @@ import { getStorage } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-
 // TODO: Replace with your own Firebase project config.
 // -------------------------------------------------------------------------
 export const firebaseConfig = {
-  apiKey: 'YOUR_API_KEY',
-  authDomain: 'YOUR_PROJECT.firebaseapp.com',
-  projectId: 'YOUR_PROJECT',
-  storageBucket: 'YOUR_PROJECT.appspot.com',
-  messagingSenderId: 'YOUR_SENDER_ID',
-  appId: 'YOUR_APP_ID'
+  apiKey: 'AIzaSyD-LHWR4DlLHmxOVAd7nLGB-nLyUsE8mmc',
+  authDomain: 'expensetracker-f3e13.firebaseapp.com',
+  projectId: 'expensetracker-f3e13',
+  storageBucket: 'expensetracker-f3e13.firebasestorage.app',
+  messagingSenderId: '338770851396',
+  appId: '1:338770851396:web:9014623323a1412443ae11'
 };
 
 export const isConfigured =

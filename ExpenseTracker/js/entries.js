@@ -17,7 +17,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { db } from './firebase-config.js';
 import { DB } from './db.js';
-import { PhotoStore } from './storage.js';
+import { AttachmentStore } from './storage.js';
 import { Auth } from './auth.js';
 import { Sync } from './sync.js';
 import { uuid, nowIso, localInputToIso } from './utils.js';
@@ -49,9 +49,10 @@ export const Entries = {
    *   type, accountId, amount, category, description, dateTimeLocal,
    *   gstEnabled, gstRate
    * }
-   * @param {File} [photoFile]
+   * @param {File[]} [attachmentFiles] one or more images/files; bundled into
+   *   a single .zip and uploaded to Storage.
    */
-  async create(input, photoFile) {
+  async create(input, attachmentFiles) {
     const who = Auth.currentProfile();
     if (!who) throw new Error('You must be signed in.');
 
@@ -76,17 +77,23 @@ export const Entries = {
       createdBy: who,
       createdAt: nowIso(),
       updatedAt: nowIso(),
-      photoPath: null,
-      photoUrl: null
+      attachmentPath: null,   // Storage path of the .zip bundle
+      attachmentUrl: null,    // download URL of the .zip
+      attachmentCount: 0      // number of files inside the zip
     };
 
-    if (photoFile) {
+    const files = attachmentFiles ? Array.from(attachmentFiles) : [];
+    if (files.length) {
       try {
-        const { path, url } = await PhotoStore.upload(who.uid, id, photoFile);
-        record.photoPath = path;
-        record.photoUrl = url;
+        const res = await AttachmentStore.uploadZip(who.uid, id, files);
+        if (res) {
+          record.attachmentPath = res.path;
+          record.attachmentUrl = res.url;
+          record.attachmentCount = res.count;
+        }
       } catch (e) {
-        console.warn('Photo upload failed, saving without proof:', e && e.message);
+        // Attachments are optional - don't block the entry on an upload failure.
+        console.warn('Attachment upload failed, saving without it:', e && e.message);
       }
     }
 
@@ -113,9 +120,9 @@ export const Entries = {
     await DB.deleteEntry(id);
     await DB.queueOp({ collection: COLLECTION, op: 'delete', docId: id });
     Sync.flush();
-    // Photo cleanup is best-effort and only meaningful when online.
-    if (existing && existing.photoPath && navigator.onLine) {
-      await PhotoStore.remove(existing.photoPath);
+    // Attachment cleanup is best-effort and only meaningful when online.
+    if (existing && existing.attachmentPath && navigator.onLine) {
+      await AttachmentStore.remove(existing.attachmentPath);
     }
   },
 
