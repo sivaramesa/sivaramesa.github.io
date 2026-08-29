@@ -2,7 +2,7 @@
  * App-shell caching for offline use. Firebase SDK + API calls are
  * network-first (Firestore has its own offline persistence).
  */
-const CACHE_VERSION = 'ledger-tracker-v8';
+const CACHE_VERSION = 'ledger-tracker-v9';
 const APP_SHELL = [
   './',
   './index.html',
@@ -28,7 +28,15 @@ const APP_SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_VERSION).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
+    caches.open(CACHE_VERSION).then((cache) =>
+      // Cache each asset individually so a single 404 (e.g. a path/case
+      // mismatch on the host) can't fail the whole install.
+      Promise.all(
+        APP_SHELL.map((url) =>
+          cache.add(url).catch((e) => console.warn('SW: could not cache', url, e && e.message))
+        )
+      )
+    ).then(() => self.skipWaiting())
   );
 });
 

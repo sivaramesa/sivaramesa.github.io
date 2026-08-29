@@ -62,7 +62,10 @@ async function boot() {
 function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch((e) =>
+      // Register relative to this page so it works whether the app is served
+      // from the domain root or a GitHub Pages project subpath (/repo/...).
+      const swUrl = new URL('sw.js', window.location.href).href;
+      navigator.serviceWorker.register(swUrl).catch((e) =>
         console.warn('SW registration failed:', e && e.message)
       );
     });
