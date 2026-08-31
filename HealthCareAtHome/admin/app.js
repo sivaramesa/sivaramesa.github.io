@@ -109,7 +109,18 @@ function renderClients() {
     <td>${c.name}</td><td>${c.phone}</td><td>${c.email || '—'}</td>
     <td class="codes">${c.accessCode || '—'}</td>
     <td>${(c.savedLocations || []).map((l) => `${l.label}: ${l.address}`).join('<br>') || '—'}</td>
+    <td><button class="btn danger small" data-del-client="${c.id}">Delete</button></td>
   </tr>`).join('');
+
+  $('clientRows').querySelectorAll('[data-del-client]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const c = state.clients.find((x) => x.id === btn.dataset.delClient);
+      if (!c) return;
+      if (!confirm(`Delete client "${c.name}"? This cannot be undone.`)) return;
+      await Data.remove(COLLECTION.CLIENTS, c.id);
+      Notify.toast('Client deleted', c.name, 'success');
+    });
+  });
 }
 
 // ── caregivers (req 2: public profiles) ──────────────────────────────────────
@@ -135,7 +146,18 @@ function renderCaregivers() {
     <td><span class="badge ${c.availability === Availability.AVAILABLE ? 'in_service' : c.availability === Availability.ON_SERVICE ? 'accepted' : 'cancelled'}">${labelize(c.availability)}</span></td>
     <td>★ ${c.rating || 'new'} (${c.ratingCount || 0})</td>
     <td class="codes">${c.accessCode || '—'}</td>
+    <td><button class="btn danger small" data-del-cg="${c.id}">Delete</button></td>
   </tr>`).join('');
+
+  $('cgRows').querySelectorAll('[data-del-cg]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const c = state.caregivers.find((x) => x.id === btn.dataset.delCg);
+      if (!c) return;
+      if (!confirm(`Delete caregiver "${c.name}"? This cannot be undone.`)) return;
+      await Data.remove(COLLECTION.CAREGIVERS, c.id);
+      Notify.toast('Caregiver deleted', c.name, 'success');
+    });
+  });
 }
 
 // ── payments (admin receives + releases payout) ──────────────────────────────

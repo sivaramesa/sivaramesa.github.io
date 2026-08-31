@@ -80,15 +80,30 @@ export const Sync = {
     return pushed;
   },
 
+  /**
+   * PULL & REPLACE: read the authoritative data from Firebase and replace the
+   * local mirror with it, then push the fresh list to subscribers so the UI
+   * converges to server truth. Each collection is handled independently — a
+   * failed server read for one collection leaves that collection's mirror
+   * untouched (we do NOT clear before the read succeeds) and does not abort
+   * the others.
+   */
   async _pullReplace() {
     let total = 0;
     for (const name of MIRRORED) {
-      const snap = await getDocsFromServer(collection(db, name));
-      const list = [];
-      snap.forEach((d) => list.push(d.data()));
-      await DB.clear(name);
-      if (list.length) await DB.putMany(name, list);
-      total += list.length;
+      try {
+        const snap = await getDocsFromServer(collection(db, name));
+        const list = [];
+        snap.forEach((d) => list.push(d.data()));
+        // only clear once we actually have the server copy in hand
+        await DB.clear(name);
+        if (list.length) await DB.putMany(name, list);
+        total += list.length;
+        await this.notify(name); // reflect the authoritative data in the UI
+      } catch (e) {
+        // keep the current mirror for this collection; retry on the next flush
+        console.warn('pull skipped (kept local mirror)', name, e && e.message);
+      }
     }
     return total;
   },
@@ -133,6 +148,18 @@ export const Sync = {
     };
   },
 
+  /**
+   * Push the current local-mirror contents of a collection to every subscriber.
+   * Called right after a local write so the UI updates instantly, without
+   * waiting for the Firestore onSnapshot round-trip.
+   */
+  async notify(collectionName) {
+    const set = this._feed.get(collectionName);
+    if (!set || set.size === 0) return;
+    const list = await DB.getAll(collectionName);
+    for (const fn of set) { try { fn(list); } catch (_) {} }
+  },
+
   /** Wire automatic flush on startup and reconnect. Call once per app. */
   start() {
     window.addEventListener('online', () => this.flush());
@@ -151,6 +178,7 @@ export const Data = {
   async write(collectionName, record) {
     await DB.put(collectionName, record);
     await DB.queueOp({ collection: collectionName, op: 'set', docId: record.id, payload: record });
+    await Sync.notify(collectionName);   // update the UI immediately (local-first)
     Sync.flush();
     return record;
   },
@@ -158,6 +186,7 @@ export const Data = {
   async remove(collectionName, id) {
     await DB.remove(collectionName, id);
     await DB.queueOp({ collection: collectionName, op: 'delete', docId: id });
+    await Sync.notify(collectionName);   // update the UI immediately (local-first)
     Sync.flush();
   },
 

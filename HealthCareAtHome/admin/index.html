@@ -13,7 +13,9 @@
       border:1px solid var(--line); background:#fff; color:var(--ink); font-weight:600; cursor:pointer; }
     .tabs button.active { background:var(--brand); color:#fff; border-color:var(--brand); }
     .codes { font-family: ui-monospace, monospace; font-size:12px; }
-    .scroll { overflow-x:auto; }
+    .scroll { overflow:auto; max-height:60vh; -webkit-overflow-scrolling:touch; }
+    .scroll table { min-width:520px; }
+    .scroll thead th { position:sticky; top:0; background:#fff; z-index:1; }
   </style>
 </head>
 <body class="admin">
@@ -66,7 +68,7 @@
       <div class="card">
         <h2>Clients (confidential)</h2>
         <div class="scroll"><table>
-          <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Access code</th><th>Locations</th></tr></thead>
+          <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Access code</th><th>Locations</th><th></th></tr></thead>
           <tbody id="clientRows"></tbody>
         </table></div>
       </div>
@@ -85,7 +87,7 @@
       <div class="card">
         <h2>Caregivers (public profiles)</h2>
         <div class="scroll"><table>
-          <thead><tr><th>Name</th><th>Phone</th><th>Specialities</th><th>Availability</th><th>Rating</th><th>Access code</th></tr></thead>
+          <thead><tr><th>Name</th><th>Phone</th><th>Specialities</th><th>Availability</th><th>Rating</th><th>Access code</th><th></th></tr></thead>
           <tbody id="cgRows"></tbody>
         </table></div>
       </div>

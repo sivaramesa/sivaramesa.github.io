@@ -11,12 +11,12 @@
 export const CONFIG = {
   // ── Firebase (real-time sync + auth + FCM) ────────────────────────────────
   firebase: {
-    apiKey: 'YOUR_FIREBASE_API_KEY',
-    authDomain: 'your-project.firebaseapp.com',
-    projectId: 'your-project',
-    storageBucket: 'your-project.appspot.com',
-    messagingSenderId: 'YOUR_SENDER_ID',
-    appId: 'YOUR_APP_ID'
+    apiKey: 'AIzaSyBTMDEulRJ85IGyjb-hL0osuInOLZHqw88',
+    authDomain: 'healthcareathome-35727.firebaseapp.com',
+    projectId: 'healthcareathome-35727',
+    storageBucket: 'healthcareathome-35727.firebasestorage.app',
+    messagingSenderId: '817661404081',
+    appId: '1:817661404081:web:312f62164d1445270dd390'
   },
 
   // Web push (FCM) — VAPID public key from Firebase console › Cloud Messaging.
