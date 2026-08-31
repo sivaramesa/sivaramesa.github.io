@@ -205,7 +205,9 @@ async function renderActive(b) {
   const showTrack = [BookingStatus.EN_ROUTE, BookingStatus.ARRIVED].includes(b.status);
   $('trackBox').classList.toggle('hidden', !showTrack);
   $('startVerifyBox').classList.toggle('hidden', b.status !== BookingStatus.ARRIVED);
-  $('completeBox').classList.toggle('hidden', b.status !== BookingStatus.COMPLETION_PENDING);
+  const showComplete = b.status === BookingStatus.COMPLETION_PENDING;
+  $('completeBox').classList.toggle('hidden', !showComplete);
+  if (showComplete) $('completeCodeShown').textContent = b.codes.completeCode || '——————';
   $('doneBox').classList.toggle('hidden', b.status !== BookingStatus.COMPLETED);
 
   if (showTrack) await renderLiveTracking(b);

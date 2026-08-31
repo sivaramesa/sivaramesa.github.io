@@ -82,7 +82,9 @@
 
       <!-- Completion: verify complete code + rate -->
       <div id="completeBox" class="hidden">
-        <label>Service marked complete. Enter the <b>completion code</b> to confirm:</label>
+        <label>Service marked complete. Your <b>completion code</b> is:</label>
+        <span id="completeCodeShown" class="code-chip"></span>
+        <label style="margin-top:12px">Re-type the code above to confirm:</label>
         <input id="completeCodeInput" type="text" inputmode="numeric" placeholder="6-digit code" />
         <label>Rating</label>
         <div id="starRow" class="stars" aria-label="rating">
