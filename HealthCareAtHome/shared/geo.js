@@ -30,19 +30,34 @@ export function estimateEtaMinutes(distKm, avgSpeedKmh = 25) {
   return Math.max(1, Math.round((distKm / avgSpeedKmh) * 60));
 }
 
+/** True when a point has usable coordinates. */
+function hasCoords(p) {
+  return !!p && p.lat != null && p.lng != null;
+}
+
 /**
  * Filter caregivers eligible for a booking:
  *   - available
  *   - speciality matches the requested one
- *   - within `radiusKm` of the booking location
- * Returns caregivers annotated with `distanceKm`, nearest first.
+ *   - within `radiusKm` of the booking location — but ONLY when both the
+ *     caregiver and the booking have real coordinates. If either location is
+ *     missing coordinates (e.g. address not geocoded because no Maps key, or
+ *     caregiver hasn't shared GPS), distance is unknown and we do NOT exclude
+ *     on distance — the caregiver stays eligible so the request is still seen.
+ * Returns caregivers annotated with `distanceKm` (Infinity when unknown),
+ * nearest first (unknown-distance ones sorted last).
  */
 export function eligibleCaregivers(booking, caregivers, radiusKm) {
   const limit = radiusKm || booking.radiusKm || Infinity;
+  const canMeasure = hasCoords(booking.location);
   return (caregivers || [])
     .filter((cg) => cg.availability === 'available')
     .filter((cg) => Array.isArray(cg.specialities) && cg.specialities.includes(booking.speciality))
     .map((cg) => ({ ...cg, distanceKm: distanceKm(cg.location, booking.location) }))
-    .filter((cg) => cg.distanceKm <= limit)
+    .filter((cg) => {
+      // apply the radius test only when we actually know both positions
+      if (!canMeasure || !hasCoords(cg.location)) return true;
+      return cg.distanceKm <= limit;
+    })
     .sort((a, b) => a.distanceKm - b.distanceKm);
 }
