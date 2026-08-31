@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a73e8" />
+  <title>HomeCare — Client</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="../shared/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>HomeCare</h1>
+    <span class="role-tag">Client</span>
+    <span id="syncDot" class="status-dot red" title="sync status"></span>
+  </header>
+
+  <main class="container">
+    <!-- Login -->
+    <section id="loginView" class="card">
+      <h2>Sign in</h2>
+      <label>Mobile number</label>
+      <input id="loginPhone" type="tel" placeholder="+91 90000 00000" />
+      <label>Access code (from admin)</label>
+      <input id="loginCode" type="text" inputmode="numeric" placeholder="Secret code" />
+      <div style="height:10px"></div>
+      <button id="loginBtn" class="btn">Sign in</button>
+      <p class="muted center" style="margin-top:12px">New here? Ask the admin to register you and share your access code.</p>
+    </section>
+
+    <!-- Book a service -->
+    <section id="bookView" class="card hidden">
+      <h2>Book a service</h2>
+      <label>Service needed</label>
+      <select id="speciality"></select>
+
+      <label>Service location</label>
+      <select id="savedLocation"></select>
+      <div id="newLocationBox" class="hidden">
+        <label>Address</label>
+        <input id="newAddress" type="text" placeholder="Type your address" />
+        <button id="geocodeBtn" class="btn secondary small" style="margin-top:8px">Locate on map</button>
+        <p id="geoResult" class="muted"></p>
+      </div>
+
+      <label>Match radius (km)</label>
+      <input id="radiusKm" type="number" min="1" value="15" />
+
+      <label>Service fee</label>
+      <input id="price" type="number" min="0" value="800" />
+
+      <div style="height:12px"></div>
+      <button id="payBookBtn" class="btn">Pay &amp; request caregiver</button>
+      <p class="muted center" style="margin-top:8px">Payment is captured first, then nearby caregivers are alerted.</p>
+    </section>
+
+    <!-- Active booking -->
+    <section id="activeView" class="card hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="margin:0">Your booking</h2>
+        <span id="activeStatus" class="badge">—</span>
+      </div>
+      <p id="activeSummary" class="muted"></p>
+
+      <div id="caregiverBox" class="card hidden" style="background:#f8fafc">
+        <strong id="cgName"></strong>
+        <div class="muted" id="cgMeta"></div>
+      </div>
+
+      <!-- Live tracking -->
+      <div id="trackBox" class="hidden">
+        <div id="map" class="map"></div>
+        <p id="etaLine" class="muted center" style="margin-top:8px"></p>
+      </div>
+
+      <!-- Arrival: verify start code -->
+      <div id="startVerifyBox" class="hidden">
+        <label>Caregiver arrived. Enter the <b>service start code</b> they read out:</label>
+        <input id="startCodeInput" type="text" inputmode="numeric" placeholder="6-digit code" />
+        <button id="verifyStartBtn" class="btn ok" style="margin-top:8px">Verify &amp; start service</button>
+      </div>
+
+      <!-- Completion: verify complete code + rate -->
+      <div id="completeBox" class="hidden">
+        <label>Service marked complete. Enter the <b>completion code</b> to confirm:</label>
+        <input id="completeCodeInput" type="text" inputmode="numeric" placeholder="6-digit code" />
+        <label>Rating</label>
+        <div id="starRow" class="stars" aria-label="rating">
+          <span data-v="1">★</span><span data-v="2">★</span><span data-v="3">★</span><span data-v="4">★</span><span data-v="5">★</span>
+        </div>
+        <label>Comments</label>
+        <textarea id="commentInput" placeholder="How was the service?"></textarea>
+        <button id="verifyCompleteBtn" class="btn ok" style="margin-top:8px">Confirm completion</button>
+      </div>
+
+      <div id="doneBox" class="hidden center">
+        <p style="font-size:40px;margin:8px">✅</p>
+        <p><b>Service completed.</b> Thank you for your feedback.</p>
+        <button id="newBookingBtn" class="btn secondary">Book another service</button>
+      </div>
+    </section>
+
+    <div id="recaptcha"></div>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

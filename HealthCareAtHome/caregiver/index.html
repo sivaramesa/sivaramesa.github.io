@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a73e8" />
+  <title>HomeCare — Caregiver</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="../shared/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>HomeCare Caregiver</h1>
+    <span class="role-tag">Caregiver</span>
+    <span id="syncDot" class="status-dot red" title="sync status"></span>
+  </header>
+
+  <main class="container">
+    <!-- Login -->
+    <section id="loginView" class="card">
+      <h2>Sign in</h2>
+      <label>Mobile number</label>
+      <input id="loginPhone" type="tel" placeholder="+91 90000 00000" />
+      <label>Access code (from admin)</label>
+      <input id="loginCode" type="text" inputmode="numeric" placeholder="Secret code" />
+      <div style="height:10px"></div>
+      <button id="loginBtn" class="btn">Sign in</button>
+    </section>
+
+    <!-- Availability -->
+    <section id="availView" class="card hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <h2 style="margin:0" id="cgHello">Welcome</h2>
+          <span class="muted" id="cgSkills"></span>
+        </div>
+        <span id="availBadge" class="badge">—</span>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button id="goAvailable" class="btn ok small">I'm available</button>
+        <button id="goUnavailable" class="btn danger small">Go offline</button>
+      </div>
+      <p class="muted" id="locNote" style="margin-top:10px"></p>
+    </section>
+
+    <!-- Incoming requests queue -->
+    <section id="queueView" class="card hidden">
+      <h2>Service requests</h2>
+      <div id="queueList"></div>
+      <p id="queueEmpty" class="muted center">No open requests right now. Stay available to receive alerts.</p>
+    </section>
+
+    <!-- Active job -->
+    <section id="jobView" class="card hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="margin:0">Current job</h2>
+        <span id="jobStatus" class="badge">—</span>
+      </div>
+      <p id="jobSummary" class="muted"></p>
+
+      <div id="startCodeBox" class="hidden">
+        <label>Service start code (read this to the client on arrival):</label>
+        <span id="startCodeChip" class="code-chip"></span>
+      </div>
+
+      <div id="jobActions" style="margin-top:14px" class="grid">
+        <button id="startTravelBtn" class="btn hidden">Start travel &amp; share location</button>
+        <button id="arrivedBtn" class="btn ok hidden">I've arrived</button>
+        <button id="completeBtn" class="btn hidden">Complete service</button>
+      </div>
+
+      <div id="completeCodeBox" class="hidden" style="margin-top:12px">
+        <label>Completion code sent to client:</label>
+        <span id="completeCodeChip" class="code-chip"></span>
+        <p class="muted center" style="margin-top:6px">Waiting for the client to confirm with rating…</p>
+      </div>
+
+      <p id="jobLive" class="muted center" style="margin-top:10px"></p>
+    </section>
+
+    <div id="recaptcha"></div>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

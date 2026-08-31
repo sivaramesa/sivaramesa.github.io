@@ -1,0 +1,18 @@
+{
+  "name": "HomeCare — Admin",
+  "short_name": "HC Admin",
+  "description": "Middle-man dashboard: manage clients and caregivers, view all bookings and secret codes, handle payments and reports.",
+  "start_url": "./index.html",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#1a73e8",
+  "background_color": "#ffffff",
+  "icons": [
+    { "src": "../shared/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "../shared/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "../shared/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "../shared/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "categories": ["health", "business", "productivity"]
+}

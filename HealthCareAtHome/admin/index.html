@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#1a73e8" />
+  <title>HomeCare — Admin</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <style>
+    .tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+    .tabs button { flex:0 0 auto; width:auto; padding:9px 14px; border-radius:999px;
+      border:1px solid var(--line); background:#fff; color:var(--ink); font-weight:600; cursor:pointer; }
+    .tabs button.active { background:var(--brand); color:#fff; border-color:var(--brand); }
+    .codes { font-family: ui-monospace, monospace; font-size:12px; }
+    .scroll { overflow-x:auto; }
+  </style>
+</head>
+<body class="admin">
+  <header class="topbar">
+    <h1>HomeCare Admin</h1>
+    <span class="role-tag">Admin</span>
+    <span id="syncDot" class="status-dot red" title="sync status"></span>
+  </header>
+
+  <main class="container">
+    <div class="tabs">
+      <button data-tab="dashboard" class="active">Dashboard</button>
+      <button data-tab="clients">Clients</button>
+      <button data-tab="caregivers">Caregivers</button>
+      <button data-tab="payments">Payments</button>
+      <button data-tab="reports">Reports</button>
+    </div>
+
+    <!-- Dashboard: all bookings + all secret codes -->
+    <section id="tab-dashboard" class="tabpane">
+      <div class="grid cols-3">
+        <div class="card center"><div class="muted">Active bookings</div><div id="mActive" class="stat">0</div></div>
+        <div class="card center"><div class="muted">Completed</div><div id="mDone" class="stat">0</div></div>
+        <div class="card center"><div class="muted">Revenue (₹)</div><div id="mRevenue" class="stat">0</div></div>
+      </div>
+      <div class="card">
+        <h2>All bookings (with secret codes)</h2>
+        <div class="scroll">
+          <table>
+            <thead><tr>
+              <th>When</th><th>Client</th><th>Service</th><th>Caregiver</th>
+              <th>Status</th><th>Start code</th><th>Complete code</th><th>Payment</th>
+            </tr></thead>
+            <tbody id="bookingRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Clients: PII, admin-only -->
+    <section id="tab-clients" class="tabpane hidden">
+      <div class="card">
+        <h2>Register client</h2>
+        <div class="row"><input id="clName" placeholder="Full name" /><input id="clPhone" placeholder="Phone (+91…)" /></div>
+        <div class="row"><input id="clEmail" placeholder="Email (optional)" /><input id="clCode" placeholder="Access code" /></div>
+        <label>Default location — label / address</label>
+        <div class="row"><input id="clLocLabel" placeholder="Home" /><input id="clLocAddr" placeholder="Address" /></div>
+        <button id="addClientBtn" class="btn" style="margin-top:10px">Add client</button>
+      </div>
+      <div class="card">
+        <h2>Clients (confidential)</h2>
+        <div class="scroll"><table>
+          <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Access code</th><th>Locations</th></tr></thead>
+          <tbody id="clientRows"></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- Caregivers -->
+    <section id="tab-caregivers" class="tabpane hidden">
+      <div class="card">
+        <h2>Register caregiver</h2>
+        <div class="row"><input id="cgName2" placeholder="Full name" /><input id="cgPhone2" placeholder="Phone (+91…)" /></div>
+        <label>Specialities</label>
+        <select id="cgSpecs" multiple size="6"></select>
+        <input id="cgCode2" placeholder="Access code" style="margin-top:8px" />
+        <button id="addCgBtn" class="btn" style="margin-top:10px">Add caregiver</button>
+      </div>
+      <div class="card">
+        <h2>Caregivers (public profiles)</h2>
+        <div class="scroll"><table>
+          <thead><tr><th>Name</th><th>Phone</th><th>Specialities</th><th>Availability</th><th>Rating</th><th>Access code</th></tr></thead>
+          <tbody id="cgRows"></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- Payments -->
+    <section id="tab-payments" class="tabpane hidden">
+      <div class="card">
+        <h2>Payments — receive from clients, pay out caregivers</h2>
+        <p class="muted">Client payment is captured at booking. On completion, release the caregiver payout (minus platform commission).</p>
+        <div class="scroll"><table>
+          <thead><tr><th>Booking</th><th>Client→Platform</th><th>Status</th><th>Caregiver share</th><th>Payout</th><th></th></tr></thead>
+          <tbody id="payRows"></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- Reports -->
+    <section id="tab-reports" class="tabpane hidden">
+      <div class="card">
+        <h2>Reports</h2>
+        <div class="row">
+          <div><label>From</label><input id="repFrom" type="date" /></div>
+          <div><label>To</label><input id="repTo" type="date" /></div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button id="repTodayBtn" class="btn secondary small">Today</button>
+          <button id="repRunBtn" class="btn small">Run report</button>
+        </div>
+      </div>
+      <div class="grid cols-3">
+        <div class="card center"><div class="muted">Bookings</div><div id="rCount" class="stat">0</div></div>
+        <div class="card center"><div class="muted">Completed</div><div id="rDone" class="stat">0</div></div>
+        <div class="card center"><div class="muted">Gross (₹)</div><div id="rGross" class="stat">0</div></div>
+        <div class="card center"><div class="muted">Commission (₹)</div><div id="rCommission" class="stat">0</div></div>
+        <div class="card center"><div class="muted">Paid to caregivers (₹)</div><div id="rPayout" class="stat">0</div></div>
+        <div class="card center"><div class="muted">Avg rating</div><div id="rRating" class="stat">—</div></div>
+      </div>
+      <div class="card">
+        <h2>Detail</h2>
+        <div class="scroll"><table>
+          <thead><tr><th>Date</th><th>Service</th><th>Caregiver</th><th>Status</th><th>Amount</th><th>Rating</th></tr></thead>
+          <tbody id="repRows"></tbody>
+        </table></div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
