@@ -1,5 +1,5 @@
 /* Service worker — HomeCare Admin PWA. See client/sw.js for strategy notes. */
-const CACHE = 'homecare-admin-v2';
+const CACHE = 'homecare-admin-v3';
 const SHELL = [
   './',
   './index.html',
@@ -34,16 +34,34 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+self.addEventListener('message', (e) => {
+  if (e.data === 'SKIP_WAITING') self.skipWaiting();
+});
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // CDN/maps/firebase -> network
 
-  if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).catch(() => caches.match('./index.html')));
+  // Navigations + code/style: network-first so updates apply on reload.
+  const isCode = /\.(?:js|css|json)$/.test(url.pathname);
+  if (req.mode === 'navigate' || isCode) {
+    e.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.status === 200 && res.type === 'basic') {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((hit) => hit || caches.match('./index.html')))
+    );
     return;
   }
+
+  // Images/icons: cache-first.
   e.respondWith(
     caches.match(req).then((hit) => hit || fetch(req).then((res) => {
       if (res && res.status === 200 && res.type === 'basic') {

@@ -7,7 +7,7 @@
  *   - Cross-origin (Firebase CDN / Google Maps / gstatic): network only — never
  *     cache opaque third-party responses.
  */
-const CACHE = 'homecare-client-v2';
+const CACHE = 'homecare-client-v3';
 const SHELL = [
   './',
   './index.html',
@@ -42,6 +42,11 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// Allow the page to tell a waiting SW to activate immediately.
+self.addEventListener('message', (e) => {
+  if (e.data === 'SKIP_WAITING') self.skipWaiting();
+});
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
@@ -52,13 +57,26 @@ self.addEventListener('fetch', (e) => {
   // Cross-origin (CDN/maps/firebase) — go straight to network.
   if (!sameOrigin) return;
 
-  if (req.mode === 'navigate') {
+  // Navigations + code/style assets: NETWORK-FIRST so updates always take
+  // effect on reload; fall back to cache only when offline. This prevents
+  // stale app.js/config.js being served after a deploy.
+  const isCode = /\.(?:js|css|json)$/.test(url.pathname);
+  if (req.mode === 'navigate' || isCode) {
     e.respondWith(
-      fetch(req).catch(() => caches.match('./index.html'))
+      fetch(req)
+        .then((res) => {
+          if (res && res.status === 200 && res.type === 'basic') {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((hit) => hit || caches.match('./index.html')))
     );
     return;
   }
 
+  // Everything else (images/icons): cache-first for speed.
   e.respondWith(
     caches.match(req).then((hit) => hit || fetch(req).then((res) => {
       if (res && res.status === 200 && res.type === 'basic') {
