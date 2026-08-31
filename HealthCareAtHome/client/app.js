@@ -132,14 +132,21 @@ function toggleNewLocation() {
 $('geocodeBtn').addEventListener('click', async () => {
   const addr = $('newAddress').value.trim();
   if (!addr) return;
-  const res = await geocode(addr);
-  if (res) {
-    state.pendingLocation = { label: 'New', address: res.address, lat: res.lat, lng: res.lng };
-    $('geoResult').textContent = `Located: ${res.address}`;
-  } else {
-    // fall back to storing the raw address (no coords) so booking still works
+  $('geoResult').textContent = 'Locating…';
+  try {
+    const res = await geocode(addr);
+    if (res) {
+      state.pendingLocation = { label: 'New', address: res.address, lat: res.lat, lng: res.lng };
+      $('geoResult').textContent = `Located: ${res.address}`;
+    } else {
+      // SDK is fine but the address didn't resolve — keep the raw address.
+      state.pendingLocation = { label: 'New', address: addr, lat: null, lng: null };
+      $('geoResult').textContent = 'Address not found — saved as typed (no map pin).';
+    }
+  } catch (e) {
+    // The Maps SDK itself failed to load — surface the real reason.
     state.pendingLocation = { label: 'New', address: addr, lat: null, lng: null };
-    $('geoResult').textContent = 'Saved address (map key not set — location matching limited).';
+    $('geoResult').textContent = 'Map unavailable: ' + (e && e.message ? e.message : 'could not load Google Maps.');
   }
 });
 
@@ -217,6 +224,13 @@ async function renderLiveTracking(b) {
   if (b.location.lat == null) { $('etaLine').textContent = 'Live map needs a mapped address.'; return; }
   if (!state.liveMap) {
     state.liveMap = await createLiveMap($('map'), { lat: b.location.lat, lng: b.location.lng });
+  }
+  if (!state.liveMap) {
+    // createLiveMap already wrote the reason into the map container.
+    $('etaLine').textContent = b.tracking && b.tracking.etaMinutes != null
+      ? `ETA ~${b.tracking.etaMinutes} min (map unavailable)`
+      : 'Map unavailable — tracking by status only.';
+    return;
   }
   if (state.liveMap && b.tracking && b.tracking.lat != null) {
     const info = await state.liveMap.update(b.tracking.lat, b.tracking.lng);

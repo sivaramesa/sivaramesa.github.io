@@ -211,7 +211,10 @@ $('startTravelBtn').addEventListener('click', async () => {
     // open turn-by-turn navigation in Google Maps (Navigation SDK equivalent)
     if (b.location.lat != null) {
       const url = `https://www.google.com/maps/dir/?api=1&destination=${b.location.lat},${b.location.lng}&travelmode=driving`;
-      window.open(url, '_blank');
+      const win = window.open(url, '_blank');
+      if (!win) Notify.toast('Navigation', 'Allow pop-ups to open turn-by-turn directions.', 'error');
+    } else {
+      Notify.toast('Navigation', 'Client address has no map pin — navigate manually.', 'info');
     }
     Notify.toast('Travelling', 'Live location is now shared with the client.', 'info');
   } catch (e) {
@@ -228,7 +231,12 @@ function startSharing(bookingId) {
     if (b && b.status === BookingStatus.EN_ROUTE) await Lifecycle.pushLocation(b, lat, lng);
   };
   // continuous watch + a steady interval fallback
-  state.stopWatch = watchPosition((p) => ping(p.lat, p.lng), () => {});
+  state.stopWatch = watchPosition(
+    (p) => ping(p.lat, p.lng),
+    (err) => Notify.toast('Location sharing',
+      'Cannot read location — the client may not see you move. ' + (err && err.message ? err.message : ''),
+      'error')
+  );
   state.pingTimer = setInterval(async () => {
     try { const p = await currentPosition(); ping(p.lat, p.lng); } catch (_) {}
   }, CONFIG.rules.locationPingMs);

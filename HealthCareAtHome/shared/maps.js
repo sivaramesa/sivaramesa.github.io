@@ -14,7 +14,16 @@ import { CONFIG } from './config.js';
 
 let _loaderPromise = null;
 
-/** Load the Google Maps JS SDK once. Resolves to window.google.maps. */
+/** Reason the maps SDK is unavailable, if it failed. Null when OK/not-yet-tried. */
+export let mapsLoadError = null;
+
+/**
+ * Load the Google Maps JS SDK once. Resolves to window.google.maps, or null if
+ * no key is configured. Rejects (and sets mapsLoadError) if the SDK fails to
+ * initialise — e.g. the "Maps JavaScript API" isn't enabled for the key, or a
+ * referrer/billing problem. Google reports these in-browser via the global
+ * gm_authFailure callback (not via a script onerror), so we hook that.
+ */
 export function loadMaps() {
   if (window.google && window.google.maps) return Promise.resolve(window.google.maps);
   if (_loaderPromise) return _loaderPromise;
@@ -23,23 +32,53 @@ export function loadMaps() {
     return Promise.resolve(null);
   }
   _loaderPromise = new Promise((resolve, reject) => {
+    let settled = false;
+    const done = (fn, arg) => { if (!settled) { settled = true; fn(arg); } };
+
     const cb = '__hcMapsReady';
-    window[cb] = () => resolve(window.google.maps);
+    window[cb] = () => done(resolve, window.google.maps);
+
+    // Google calls this global when the key is rejected (API not enabled,
+    // referrer/billing/quota). It's the only signal for auth failures.
+    window.gm_authFailure = () => {
+      mapsLoadError = 'Google Maps rejected the API key. In Google Cloud, enable '
+        + 'the "Maps JavaScript API" for this key and check billing/referrer restrictions.';
+      console.error('maps.js: ' + mapsLoadError);
+      done(reject, new Error(mapsLoadError));
+    };
+
     const s = document.createElement('script');
     s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(CONFIG.googleMapsApiKey)}` +
       `&libraries=places,geometry&callback=${cb}`;
     s.async = true;
     s.defer = true;
-    s.onerror = () => reject(new Error('Failed to load Google Maps'));
+    s.onerror = () => {
+      mapsLoadError = 'Network error loading Google Maps SDK.';
+      done(reject, new Error(mapsLoadError));
+    };
     document.head.appendChild(s);
+
+    // Safety net: if neither callback fires (e.g. blocked silently), fail after 12s.
+    setTimeout(() => {
+      if (!settled) {
+        mapsLoadError = 'Google Maps SDK did not initialise (timeout). '
+          + 'Likely the Maps JavaScript API is not enabled for this key.';
+        console.error('maps.js: ' + mapsLoadError);
+        done(reject, new Error(mapsLoadError));
+      }
+    }, 12000);
   });
   return _loaderPromise;
 }
 
-/** Geocode a free-text address to { address, lat, lng } (or null). */
+/**
+ * Geocode a free-text address to { address, lat, lng }.
+ * Returns null if the address can't be found. Throws if the Maps SDK itself
+ * failed to load (so the UI can show the real reason, not "address not found").
+ */
 export async function geocode(address) {
-  const maps = await loadMaps();
-  if (!maps) return null;
+  const maps = await loadMaps(); // may throw with mapsLoadError
+  if (!maps) return null;        // no key configured
   const geocoder = new maps.Geocoder();
   return new Promise((resolve) => {
     geocoder.geocode({ address }, (results, status) => {
@@ -94,7 +133,15 @@ export function watchPosition(onUpdate, onError) {
  * arrive, and (optionally) draws the driving route with distance/ETA.
  */
 export async function createLiveMap(container, destination) {
-  const maps = await loadMaps();
+  let maps;
+  try {
+    maps = await loadMaps();
+  } catch (e) {
+    // Maps SDK failed to load (API not enabled / billing / referrer). Show why
+    // instead of letting the rejection break the caller's render.
+    container.textContent = (e && e.message) ? e.message : 'Map failed to load.';
+    return null;
+  }
   if (!maps) { container.textContent = 'Map unavailable (set a Google Maps API key in config.js).'; return null; }
 
   const map = new maps.Map(container, { center: destination, zoom: 14, disableDefaultUI: false });
