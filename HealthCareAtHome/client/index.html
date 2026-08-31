@@ -77,7 +77,9 @@
 
       <!-- Arrival: verify start code -->
       <div id="startVerifyBox" class="hidden">
-        <label>Caregiver arrived. Enter the <b>service start code</b> they read out:</label>
+        <label>Caregiver arrived. Your <b>service start code</b> is:</label>
+        <span id="startCodeShown" class="code-chip"></span>
+        <label style="margin-top:12px">Confirm with the caregiver, then enter the code to begin:</label>
         <input id="startCodeInput" type="text" inputmode="numeric" placeholder="6-digit code" />
         <button id="verifyStartBtn" class="btn ok" style="margin-top:8px">Verify &amp; start service</button>
       </div>

@@ -211,7 +211,9 @@ async function renderActive(b) {
   // toggle stage-specific panels
   const showTrack = [BookingStatus.EN_ROUTE, BookingStatus.ARRIVED].includes(b.status);
   $('trackBox').classList.toggle('hidden', !showTrack);
-  $('startVerifyBox').classList.toggle('hidden', b.status !== BookingStatus.ARRIVED);
+  const showStartVerify = b.status === BookingStatus.ARRIVED;
+  $('startVerifyBox').classList.toggle('hidden', !showStartVerify);
+  if (showStartVerify) $('startCodeShown').textContent = b.codes.startCode || '——————';
   const showComplete = b.status === BookingStatus.COMPLETION_PENDING;
   $('completeBox').classList.toggle('hidden', !showComplete);
   if (showComplete) $('completeCodeShown').textContent = b.codes.completeCode || '——————';
