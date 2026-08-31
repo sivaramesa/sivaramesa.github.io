@@ -24,7 +24,7 @@ export const CONFIG = {
 
   // ── Google Maps Platform ──────────────────────────────────────────────────
   // Maps JavaScript API + Geocoding + Directions/Routes. Restrict by referrer.
-  googleMapsApiKey: 'YOUR_GOOGLE_MAPS_API_KEY',
+  googleMapsApiKey: 'AIzaSyB6W9ggDsVZyQo_MYV0Ts52sItH0RWgyPs',
 
   // ── Payment gateway (publishable/checkout key only — never the secret) ─────
   payment: {
