@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Data fix — default address for migrated records</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <style>
+    body { padding: 16px; max-width: 900px; margin: 0 auto; }
+    pre { background: #0b1020; color: #d5e0ff; padding: 12px; border-radius: 10px; overflow: auto; max-height: 55vh; font-size: 12px; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; background:#eef; margin-left:6px; }
+    .btnrow { display:flex; gap:10px; margin:12px 0; }
+    .btnrow .btn { width:auto; }
+  </style>
+</head>
+<body>
+  <h1>Default address for migrated records</h1>
+  <p class="muted">
+    Fills a default address where it is <b>missing / null / empty</b>. Nothing else is touched.
+    Target: <b>Sholinganallur, Chennai</b> (lat 12.9010, lng 80.2279).
+  </p>
+  <ul class="muted" style="font-size:13px">
+    <li>Client <code>address</code> — set when empty.</li>
+    <li>Caregiver <code>address</code> — set when empty.</li>
+    <li>Caregiver <code>operatingLocation</code> — set when empty; when set, the matching <code>location</code> is also filled if it was empty.</li>
+  </ul>
+
+  <div class="btnrow">
+    <button id="dryRun" class="btn">1 · Dry run (preview only)</button>
+    <button id="apply" class="btn danger" disabled>2 · Apply changes</button>
+  </div>
+  <p id="summary" class="muted"></p>
+  <pre id="log">Click “Dry run” to preview. No writes happen until you click “Apply”.</pre>
+
+  <script type="module">
+    import { CONFIG } from '../shared/config.js';
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+    import {
+      getFirestore, collection, getDocs, doc, updateDoc
+    } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+    const DEFAULT_ADDR = 'Sholinganallur, Chennai';
+    const LAT = 12.9010, LNG = 80.2279;
+
+    const app = initializeApp(CONFIG.firebase);
+    const db = getFirestore(app);
+    const $ = (id) => document.getElementById(id);
+    const logEl = $('log');
+    const log = (line) => { logEl.textContent += '\n' + line; };
+    const clear = () => { logEl.textContent = ''; };
+
+    // An address slot is "empty" if there's no text AND no coordinates.
+    const isEmptyAddr = (a) => !a || (!a.address && a.lat == null && a.lng == null);
+    const filledAddr = () => ({ address: DEFAULT_ADDR, lat: LAT, lng: LNG });
+
+    /** Compute the patch for one record; returns { patch, notes } or null if nothing to do. */
+    function planClient(c) {
+      if (!isEmptyAddr(c.address)) return null;
+      return { patch: { address: filledAddr(), updatedAt: new Date().toISOString() }, notes: ['address'] };
+    }
+
+    function planCaregiver(c) {
+      const patch = {};
+      const notes = [];
+      if (isEmptyAddr(c.address)) { patch.address = filledAddr(); notes.push('address'); }
+      if (isEmptyAddr(c.operatingLocation)) {
+        patch.operatingLocation = filledAddr();
+        notes.push('operatingLocation');
+        // matching point follows operating location when it too is empty
+        const loc = c.location;
+        if (!loc || loc.lat == null) {
+          patch.location = { lat: LAT, lng: LNG, at: new Date().toISOString() };
+          notes.push('location(match)');
+        }
+      }
+      if (notes.length === 0) return null;
+      patch.updatedAt = new Date().toISOString();
+      return { patch, notes };
+    }
+
+    async function collect(name, planner) {
+      const snap = await getDocs(collection(db, name));
+      const changes = [];
+      snap.forEach((d) => {
+        const rec = d.data();
+        const plan = planner(rec);
+        if (plan) changes.push({ id: d.id, rec, ...plan });
+      });
+      return { total: snap.size, changes };
+    }
+
+    let pending = null; // cached plan from the dry run
+
+    async function dryRun() {
+      clear();
+      $('apply').disabled = true;
+      log('Reading clients + caregivers…');
+      const clients = await collect('clients', planClient);
+      const caregivers = await collect('caregivers', planCaregiver);
+      pending = { clients, caregivers };
+
+      log(`\nCLIENTS: ${clients.total} total, ${clients.changes.length} to update`);
+      clients.changes.forEach((c) =>
+        log(`  • ${c.id.slice(-6)} ${c.rec.name || ''} — set ${c.notes.join(', ')}`));
+
+      log(`\nCAREGIVERS: ${caregivers.total} total, ${caregivers.changes.length} to update`);
+      caregivers.changes.forEach((c) =>
+        log(`  • ${c.id.slice(-6)} ${c.rec.name || ''} — set ${c.notes.join(', ')}`));
+
+      const n = clients.changes.length + caregivers.changes.length;
+      $('summary').textContent = `Dry run complete — ${n} record(s) would change. Nothing written yet.`;
+      $('apply').disabled = n === 0;
+      log(`\n${n === 0 ? 'Nothing to do.' : 'Review above, then click “Apply changes”.'}`);
+    }
+
+    async function apply() {
+      if (!pending) return;
+      $('apply').disabled = true; $('dryRun').disabled = true;
+      log('\nApplying…');
+      let ok = 0, fail = 0;
+      const run = async (name, changes) => {
+        for (const c of changes) {
+          try { await updateDoc(doc(db, name, c.id), c.patch); ok++; log(`  ✓ ${name}/${c.id.slice(-6)}`); }
+          catch (e) { fail++; log(`  ✗ ${name}/${c.id.slice(-6)} — ${e.message}`); }
+        }
+      };
+      await run('clients', pending.clients.changes);
+      await run('caregivers', pending.caregivers.changes);
+      $('summary').textContent = `Applied: ${ok} updated, ${fail} failed.`;
+      log(`\nDone. ${ok} updated, ${fail} failed. Re-run the dry run to confirm 0 remaining.`);
+      $('dryRun').disabled = false;
+      pending = null;
+    }
+
+    $('dryRun').addEventListener('click', () => dryRun().catch((e) => log('ERROR: ' + e.message)));
+    $('apply').addEventListener('click', () => apply().catch((e) => log('ERROR: ' + e.message)));
+  </script>
+</body>
+</html>
