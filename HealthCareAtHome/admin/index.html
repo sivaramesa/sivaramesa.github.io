@@ -111,10 +111,32 @@
           <table>
             <thead><tr>
               <th>Type</th><th>Booked</th><th>Scheduled</th><th>Client</th><th>Service</th><th>For</th><th>Caregiver</th>
-              <th>Status</th><th>Start code</th><th>Complete code</th><th>Payment</th>
+              <th>Status</th><th>Start code</th><th>Complete code</th><th>Payment</th><th></th>
             </tr></thead>
             <tbody id="bookingRows"></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- Edit booking modal -->
+      <div id="editBookingModal" class="hidden" style="position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:16px">
+        <div class="card" style="max-width:460px;width:100%;max-height:90vh;overflow:auto">
+          <h2>Edit booking <span id="ebId" class="muted"></span></h2>
+          <label>Service</label>
+          <select id="ebSpeciality"></select>
+          <label>Scheduled date/time</label>
+          <input id="ebScheduledAt" type="datetime-local" />
+          <label>Price (₹)</label>
+          <input id="ebPrice" type="number" min="0" />
+          <label>Match radius (km)</label>
+          <input id="ebRadius" type="number" min="1" />
+          <label style="margin-top:8px"><input type="checkbox" id="ebPriority" /> Priority booking</label>
+          <label>Status (override)</label>
+          <select id="ebStatus"></select>
+          <div class="row" style="margin-top:14px">
+            <button id="ebSave" class="btn ok">Save changes</button>
+            <button id="ebCancel" class="btn secondary">Cancel</button>
+          </div>
         </div>
       </div>
     </section>

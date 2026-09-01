@@ -207,9 +207,98 @@ function renderDashboard() {
       <td class="codes">${b.codes.startCode || '—'}${b.codes.startVerified ? ' ✓' : ''}</td>
       <td class="codes">${b.codes.completeCode || '—'}${b.codes.completeVerified ? ' ✓' : ''}</td>
       <td>${labelize(b.payment.status)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn small" data-edit-bk="${b.id}">Edit</button>
+        <button class="btn danger small" data-del-bk="${b.id}">Delete</button>
+      </td>
     </tr>`;
   }).join('');
+
+  $('bookingRows').querySelectorAll('[data-del-bk]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const b = state.bookings.find((x) => x.id === btn.dataset.delBk);
+      if (!b) return;
+      if (!confirm(`Delete booking ${b.id.slice(-6)} (${labelize(b.speciality)})? This cannot be undone.`)) return;
+      await Data.remove(COLLECTION.BOOKINGS, b.id);
+      Notify.toast('Booking deleted', b.id.slice(-6), 'success');
+    });
+  });
+
+  $('bookingRows').querySelectorAll('[data-edit-bk]').forEach((btn) => {
+    btn.addEventListener('click', () => openEditBooking(btn.dataset.editBk));
+  });
 }
+
+// ── edit booking modal ────────────────────────────────────────────────────────
+let _editingBookingId = null;
+
+function openEditBooking(id) {
+  const b = state.bookings.find((x) => x.id === id);
+  if (!b) return;
+  _editingBookingId = id;
+  $('ebId').textContent = '#' + id.slice(-6);
+
+  // service options from the master (fallback to enum)
+  const svcOpts = state.services.length
+    ? state.services.map((s) => `<option value="${s.key}">${s.name}</option>`).join('')
+    : Object.values(Speciality).map((s) => `<option value="${s}">${labelize(s)}</option>`).join('');
+  $('ebSpeciality').innerHTML = svcOpts;
+  $('ebSpeciality').value = b.speciality;
+
+  // status options
+  $('ebStatus').innerHTML = Object.values(BookingStatus)
+    .map((s) => `<option value="${s}">${labelize(s)}</option>`).join('');
+  $('ebStatus').value = b.status;
+
+  $('ebScheduledAt').value = b.scheduledAt ? toLocalInput(b.scheduledAt) : '';
+  $('ebPrice').value = b.price || 0;
+  $('ebRadius').value = b.radiusKm || CONFIG_defaultRadius();
+  $('ebPriority').checked = !!b.priority;
+
+  $('editBookingModal').classList.remove('hidden');
+}
+
+function CONFIG_defaultRadius() { return 15; }
+
+function toLocalInput(iso) {
+  try {
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch (_) { return ''; }
+}
+
+$('ebCancel').addEventListener('click', () => {
+  $('editBookingModal').classList.add('hidden');
+  _editingBookingId = null;
+});
+
+$('ebSave').addEventListener('click', async () => {
+  const b = state.bookings.find((x) => x.id === _editingBookingId);
+  if (!b) return;
+  const svc = state.services.find((s) => s.key === $('ebSpeciality').value);
+  const updated = {
+    ...b,
+    speciality: $('ebSpeciality').value,
+    serviceId: svc ? svc.id : b.serviceId,
+    commissionPct: svc ? svc.commissionPct : b.commissionPct,
+    scheduledAt: $('ebScheduledAt').value ? new Date($('ebScheduledAt').value).toISOString() : b.scheduledAt,
+    price: Number($('ebPrice').value) || 0,
+    radiusKm: Number($('ebRadius').value) || b.radiusKm,
+    priority: $('ebPriority').checked,
+    status: $('ebStatus').value,
+    updatedAt: nowIso(),
+    history: [...(b.history || []), { status: $('ebStatus').value, at: nowIso(), by: 'admin-edit' }]
+  };
+  try {
+    await Data.write(COLLECTION.BOOKINGS, updated);
+    $('editBookingModal').classList.add('hidden');
+    _editingBookingId = null;
+    Notify.toast('Booking updated', '#' + updated.id.slice(-6), 'success');
+  } catch (e) {
+    Notify.toast('Update failed', e.message, 'error');
+  }
+});
 
 // ── clients (req 1: confidential, admin-only) ────────────────────────────────
 $('addClientBtn').addEventListener('click', async () => {
