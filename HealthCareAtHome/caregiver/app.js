@@ -33,6 +33,7 @@ const state = {
 };
 
 async function boot() {
+  Auth.use('caregiver');   // scope the session to this role (same-device safe)
   registerServiceWorker();
   Sync.start();
   Sync.onStatus(renderSyncDot);
@@ -511,11 +512,13 @@ guardedClick('arrivedBtn', async () => {
     // already arrived (or state moved on) — a duplicate tap is a safe no-op
     return Notify.toast('Already updated', 'Arrival is already recorded.', 'info');
   }
-  // push one fresh location immediately, then keep the watch running
-  try { const p = await currentPosition(); await Lifecycle.pushLocation(b, p.lat, p.lng); } catch (_) {}
+  // capture a fresh position (best-effort) and fold it into the SAME arrival
+  // write — a separate en_route write here can echo back and revert ARRIVED.
+  let here = null;
+  try { here = await currentPosition(); } catch (_) {}
   try {
-    await Lifecycle.markArrived(b);
-    startSharing(b.id); // keep location fresh through ARRIVED / IN_SERVICE
+    await Lifecycle.markArrived(b, here);   // single write: en_route -> arrived
+    startSharing(b.id);                     // resume live sharing through arrived/in_service
     Notify.toast('Arrived', 'Read the start code to the client to begin the service.', 'info');
   } catch (e) {
     Notify.toast('Could not mark arrived', e.message, 'error');

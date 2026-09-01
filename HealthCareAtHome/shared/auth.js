@@ -17,21 +17,48 @@ import {
   RecaptchaVerifier, signInWithPhoneNumber, signInAnonymously
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 
-const SESSION_KEY = 'hc_session';
+const SESSION_PREFIX = 'hc_session';
 
 export const Auth = {
-  /** Current cached session: { role, userId, name, phone } or null. */
+  // The role this app instance is scoped to. Each PWA calls Auth.use(role) once
+  // at startup so client/caregiver/admin get SEPARATE session slots on the same
+  // browser origin — otherwise logging into one overwrites another on the same
+  // device (which breaks same-device testing of two roles).
+  _role: null,
+
+  /** Scope this app's session to a role. Call once at boot. */
+  use(role) {
+    this._role = role || null;
+    return this;
+  },
+
+  _key() {
+    return this._role ? `${SESSION_PREFIX}_${this._role}` : SESSION_PREFIX;
+  },
+
+  /** Current cached session for THIS app's role: { role, userId, name, phone } or null. */
   session() {
-    try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch (_) { return null; }
+    try {
+      const raw = localStorage.getItem(this._key())
+        // one-time migration: fall back to the old shared key if it matches our role
+        || (this._role ? null : localStorage.getItem(SESSION_PREFIX));
+      const sess = raw ? JSON.parse(raw) : null;
+      // guard: never return a session belonging to a different role
+      if (sess && this._role && sess.role && sess.role !== this._role) return null;
+      return sess;
+    } catch (_) { return null; }
   },
 
   setSession(sess) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(sess));
+    // key by the session's own role when available, else this app's role
+    const role = (sess && sess.role) || this._role;
+    const key = role ? `${SESSION_PREFIX}_${role}` : SESSION_PREFIX;
+    localStorage.setItem(key, JSON.stringify(sess));
     return sess;
   },
 
   signOut() {
-    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(this._key());
     try { auth.signOut(); } catch (_) {}
   },
 

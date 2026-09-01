@@ -127,9 +127,18 @@ export const Lifecycle = {
     return booking;
   },
 
-  /** req 7 — caregiver marks arrival; client will now ask for the start code. */
-  async markArrived(booking) {
-    advance(booking, BookingStatus.ARRIVED);
+  /** req 7 — caregiver marks arrival; client will now ask for the start code.
+   *  Optionally fold a fresh location into the SAME write (avoids a separate
+   *  en_route write racing/echoing over the arrived write). */
+  async markArrived(booking, here = null) {
+    const patch = {};
+    if (here && here.lat != null) {
+      patch.tracking = {
+        lat: here.lat, lng: here.lng, updatedAt: nowIso(),
+        etaMinutes: 0
+      };
+    }
+    advance(booking, BookingStatus.ARRIVED, patch);
     await Data.write(COLLECTION.BOOKINGS, booking);
     await Notify.toClient(booking.clientId, {
       title: 'Caregiver has arrived',

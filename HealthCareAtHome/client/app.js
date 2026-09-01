@@ -42,6 +42,7 @@ const state = {
 
 // ── boot ──────────────────────────────────────────────────────────────────
 async function boot() {
+  Auth.use('client');   // scope the session to this role (same-device safe)
   registerServiceWorker();
   Sync.start();
   Sync.onStatus(renderSyncDot);

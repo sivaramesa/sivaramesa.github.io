@@ -39,6 +39,31 @@ export const Sync = {
     return status;
   },
 
+  /**
+   * Merge a server list with local records that still have an UNCONFIRMED write
+   * queued in the outbox. A stale server snapshot (e.g. an echo of an earlier
+   * write) must not clobber a newer local write that hasn't flushed yet —
+   * otherwise a just-changed status (e.g. arrived) can revert. For any docId
+   * with a pending outbox op, the local payload wins.
+   */
+  async _mergeWithPending(collectionName, serverList) {
+    let pendingIds = new Set();
+    let pendingById = new Map();
+    try {
+      const ops = await DB.getOutbox();
+      for (const op of ops) {
+        if (op.collection !== collectionName) continue;
+        if (op.op === 'delete') { pendingIds.add(op.docId); pendingById.delete(op.docId); }
+        else { pendingIds.add(op.docId); if (op.payload) pendingById.set(op.docId, op.payload); }
+      }
+    } catch (_) { return serverList; }
+    if (pendingIds.size === 0) return serverList;
+
+    const merged = serverList.filter((r) => !pendingIds.has(r.id)); // drop stale server copies of pending docs
+    for (const rec of pendingById.values()) merged.push(rec);        // keep our unconfirmed writes
+    return merged;
+  },
+
   // ── two-phase flush ───────────────────────────────────────────────────────
   async flush() {
     if (this._flushing) return null;
@@ -93,8 +118,10 @@ export const Sync = {
     for (const name of MIRRORED) {
       try {
         const snap = await getDocsFromServer(collection(db, name));
-        const list = [];
-        snap.forEach((d) => list.push(d.data()));
+        const raw = [];
+        snap.forEach((d) => raw.push(d.data()));
+        // keep any locally-pending (unconfirmed) writes from being reverted
+        const list = await this._mergeWithPending(name, raw);
         // only clear once we actually have the server copy in hand
         await DB.clear(name);
         if (list.length) await DB.putMany(name, list);
@@ -120,8 +147,10 @@ export const Sync = {
 
     if (!this._subs.has(collectionName)) {
       const unsub = onSnapshot(collection(db, collectionName), async (snap) => {
-        const list = [];
-        snap.forEach((d) => list.push(d.data()));
+        const raw = [];
+        snap.forEach((d) => raw.push(d.data()));
+        // don't let a stale snapshot echo revert an unconfirmed local write
+        const list = await this._mergeWithPending(collectionName, raw);
         // refresh mirror so offline reads stay current
         try { await DB.clear(collectionName); if (list.length) await DB.putMany(collectionName, list); } catch (_) {}
         for (const fn of this._feed.get(collectionName)) {

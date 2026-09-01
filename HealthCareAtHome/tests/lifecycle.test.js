@@ -16,7 +16,7 @@ vi.mock('../shared/sync.js', () => ({
   Sync: { start() {}, onStatus() {}, subscribe: () => () => {}, notify() {} }
 }));
 vi.mock('../shared/notify.js', () => ({
-  Notify: { toast() {}, toCaregivers: vi.fn(async () => {}), _enqueuePush: async () => {} }
+  Notify: { toast() {}, toCaregivers: vi.fn(async () => {}), toClient: vi.fn(async () => {}), _enqueuePush: async () => {} }
 }));
 // firebase.js runs initializeApp() against a CDN URL — replace with just COLLECTION.
 vi.mock('../shared/firebase.js', () => ({
@@ -112,5 +112,35 @@ describe('Lifecycle.cloneBooking', () => {
     expect(clone.speciality).toBe(orig.speciality);
     expect(clone.price).toBe(orig.price);
     expect(clone.payment.status).toBe('unpaid'); // fresh, not carried over
+  });
+});
+
+describe('Lifecycle.markArrived — single write, folds location', () => {
+  beforeEach(resetStore);
+
+  it('advances en_route -> arrived in one write and stores the given location', async () => {
+    const b = paidBooking();
+    b.status = BookingStatus.EN_ROUTE;
+    store.bookings[b.id] = b;
+    await Lifecycle.markArrived(b, { lat: 13.001, lng: 80.001 });
+    const saved = store.bookings[b.id];
+    expect(saved.status).toBe(BookingStatus.ARRIVED);
+    expect(saved.tracking.lat).toBeCloseTo(13.001, 3);
+    expect(saved.tracking.etaMinutes).toBe(0);
+  });
+
+  it('works without a location (best-effort GPS unavailable)', async () => {
+    const b = paidBooking();
+    b.status = BookingStatus.EN_ROUTE;
+    store.bookings[b.id] = b;
+    await Lifecycle.markArrived(b, null);
+    expect(store.bookings[b.id].status).toBe(BookingStatus.ARRIVED);
+  });
+
+  it('rejects an illegal transition (not en_route)', async () => {
+    const b = paidBooking();
+    b.status = BookingStatus.ARRIVED;
+    store.bookings[b.id] = b;
+    await expect(Lifecycle.markArrived(b, null)).rejects.toThrow(/Illegal transition/);
   });
 });
