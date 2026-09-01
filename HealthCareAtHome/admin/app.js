@@ -199,12 +199,34 @@ $('addClientBtn').addEventListener('click', async () => {
 });
 
 function renderClients() {
-  $('clientRows').innerHTML = state.clients.map((c) => `<tr>
-    <td>${c.name}</td><td>${c.phone}</td><td>${c.email || '—'}</td>
+  $('clientRows').innerHTML = state.clients.map((c) => {
+    const photo = c.photo
+      ? `<img src="${c.photo}" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover" />`
+      : '';
+    const details = [
+      c.sex || null,
+      c.dob ? `DOB ${c.dob}` : null,
+      c.aadhaar ? `Aadhaar ${maskAadhaar(c.aadhaar.number)}${c.aadhaar.verified ? ' ✓' : ''}` : null,
+      c.email || null
+    ].filter(Boolean).join('<br>') || '—';
+    const members = (c.members || []).length
+      ? (c.members || []).map((m) => {
+          const who = [m.forename, m.surname].filter(Boolean).join(' ');
+          const rel = m.relationship ? ` (${m.relationship})` : '';
+          const aad = m.aadhaar ? ` · ${maskAadhaar(m.aadhaar.number)}${m.aadhaar.verified ? ' ✓' : ''}` : '';
+          return `${who}${rel}${aad}`;
+        }).join('<br>')
+      : '—';
+    return `<tr>
+    <td>${photo}</td>
+    <td>${c.name}</td><td>${c.phone}</td>
+    <td style="font-size:12px">${details}</td>
     <td class="codes">${c.accessCode || '—'}</td>
-    <td>${(c.savedLocations || []).map((l) => `${l.label}: ${l.address}`).join('<br>') || '—'}</td>
+    <td style="font-size:12px">${(c.savedLocations || []).map((l) => `${l.label}: ${l.address}`).join('<br>') || '—'}</td>
+    <td style="font-size:12px">${members}</td>
     <td><button class="btn danger small" data-del-client="${c.id}">Delete</button></td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
 
   $('clientRows').querySelectorAll('[data-del-client]').forEach((btn) => {
     btn.addEventListener('click', async () => {

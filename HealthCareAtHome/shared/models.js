@@ -81,16 +81,47 @@ export const Speciality = Object.freeze({
 // ── Factories ────────────────────────────────────────────────────────────────
 
 /** Client — sensitive PII; only surfaced in the Admin app. */
-export function createClient({ name, phone, email = '', savedLocations = [] }) {
+export function createClient({
+  name, phone, email = '', savedLocations = [],
+  surname = '', forename = '', sex = '', dob = '', photo = null,
+  address = null,          // self residence { address, lat, lng }
+  aadhaar = null,          // { number, verified }
+  members = []             // additional people the client books for (see below)
+}) {
+  const displayName = name || [forename, surname].filter(Boolean).join(' ').trim();
+  // Build savedLocations from self + members' addresses if not supplied.
+  let locs = savedLocations;
+  if ((!locs || locs.length === 0)) {
+    locs = [];
+    if (address && (address.address || address.lat != null)) {
+      locs.push({ label: 'Home', address: address.address || '', lat: address.lat ?? null, lng: address.lng ?? null });
+    }
+    for (const m of members) {
+      if (m.address && (m.address.address || m.address.lat != null)) {
+        const who = [m.forename, m.surname].filter(Boolean).join(' ').trim() || 'Member';
+        locs.push({ label: who, address: m.address.address || '', lat: m.address.lat ?? null, lng: m.address.lng ?? null });
+      }
+    }
+  }
   return {
     id: uid('cli'),
     role: Role.CLIENT,
-    name,
+    name: displayName,
+    surname,
+    forename,
+    sex,
+    dob,
     phone,
     email,
-    // Each location: { label, address, lat, lng }
-    savedLocations,
-    accessCode: null,    // secret code for code-based login (set by admin)
+    photo,               // tiny data-URL thumbnail
+    address,             // self residence { address, lat, lng }
+    aadhaar,             // { number, verified }
+    // Additional members: { surname, forename, sex, dob, relationship, photo,
+    //   address:{address,lat,lng}, aadhaar:{number,verified} }
+    members,
+    // Each location: { label, address, lat, lng } — used at booking time.
+    savedLocations: locs,
+    accessCode: null,    // secret code for code-based login (set on registration/admin)
     fcmToken: null,      // device push token
     createdAt: nowIso(),
     updatedAt: nowIso()

@@ -27,7 +27,50 @@
       <input id="loginCode" type="text" inputmode="numeric" placeholder="Secret code" />
       <div style="height:10px"></div>
       <button id="loginBtn" class="btn">Sign in</button>
-      <p class="muted center" style="margin-top:12px">New here? Ask the admin to register you and share your access code.</p>
+      <p class="muted center" style="margin-top:12px">New here?
+        <a href="#" id="showRegister">Register here</a>
+      </p>
+    </section>
+
+    <!-- Registration -->
+    <section id="registerView" class="card hidden">
+      <h2>Client registration</h2>
+
+      <h2 style="font-size:14px;margin-top:4px">Your details</h2>
+      <div class="row"><input id="regForename" placeholder="Forename" /><input id="regSurname" placeholder="Surname" /></div>
+      <div class="row">
+        <select id="regSex"><option value="">Sex…</option><option>Female</option><option>Male</option><option>Other</option></select>
+        <input id="regDob" type="date" />
+      </div>
+      <label>Mobile number (for login)</label>
+      <input id="regPhone" type="tel" placeholder="+91 90000 00000" />
+      <label>Photo</label>
+      <input id="regPhoto" type="file" accept="image/*" />
+      <img id="regPhotoPreview" alt="" style="width:64px;height:64px;border-radius:50%;object-fit:cover;margin-top:6px;display:none" />
+      <label>Address</label>
+      <input id="regAddress" type="text" placeholder="Your address" />
+      <button id="regGeoAddress" class="btn secondary small" style="margin-top:6px">Locate address</button>
+      <p id="regAddressGeo" class="muted"></p>
+      <label>Aadhaar number (12 digits)</label>
+      <input id="regAadhaar" type="text" inputmode="numeric" maxlength="12" placeholder="XXXXXXXXXXXX" />
+      <button id="regSendOtp" class="btn secondary small" style="margin-top:6px">Send OTP</button>
+      <div id="regOtpBox" class="hidden" style="margin-top:8px">
+        <input id="regOtp" type="text" inputmode="numeric" placeholder="6-digit OTP" />
+        <button id="regVerifyOtp" class="btn small" style="margin-top:6px">Verify OTP</button>
+      </div>
+      <p id="regAadhaarStatus" class="muted"></p>
+
+      <hr style="margin:16px 0;border:none;border-top:1px solid var(--line)" />
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="font-size:14px;margin:0">Additional members</h2>
+        <button id="regAddMember" class="btn secondary small" style="max-width:130px">+ Add member</button>
+      </div>
+      <div id="regMembers"></div>
+
+      <div style="height:14px"></div>
+      <button id="regSubmit" class="btn" disabled>Register</button>
+      <p id="regSubmitHint" class="muted center" style="margin-top:8px">Verify Aadhaar for everyone to enable registration.</p>
+      <p class="center" style="margin-top:8px"><a href="#" id="showLogin">Back to sign in</a></p>
     </section>
 
     <!-- Book a service -->

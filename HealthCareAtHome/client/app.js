@@ -8,7 +8,7 @@
  * All reads come from the live bookings feed (Sync.subscribe), so the view
  * reacts in real time as the caregiver progresses through the lifecycle.
  */
-import { Speciality, BookingStatus, createBooking, nowIso } from '../shared/models.js';
+import { Speciality, BookingStatus, createBooking, createClient, nowIso } from '../shared/models.js';
 import { COLLECTION } from '../shared/firebase.js';
 import { Data, Sync } from '../shared/sync.js';
 import { Auth } from '../shared/auth.js';
@@ -20,6 +20,8 @@ import { Settings } from '../shared/settings.js';
 import { checkProximity, eligibleCaregivers } from '../shared/geo.js';
 import { registerWithUpdates } from '../shared/pwa-update.js';
 import { Services } from '../shared/services-master.js';
+import { Aadhaar, isValidAadhaarFormat } from '../shared/aadhaar.js';
+import { compressPhoto } from '../shared/imaging.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -81,7 +83,231 @@ function showLogin() {
   $('loginView').classList.remove('hidden');
   $('bookView').classList.add('hidden');
   $('activeView').classList.add('hidden');
+  $('registerView').classList.add('hidden');
 }
+
+// ── registration ────────────────────────────────────────────────────────────
+// A "person" = self or a member. self has phone; members have relationship.
+const regState = {
+  self: { photo: null, addressGeo: null, aadhaarTxnId: null, aadhaarVerified: false },
+  members: [] // each: { id, photo, addressGeo, sameAsPrimary, aadhaarTxnId, aadhaarVerified }
+};
+
+function labelizePerson(forename, surname) {
+  return [forename, surname].filter(Boolean).join(' ').trim();
+}
+
+document.getElementById('showRegister').addEventListener('click', (e) => {
+  e.preventDefault();
+  $('loginView').classList.add('hidden');
+  $('registerView').classList.remove('hidden');
+});
+document.getElementById('showLogin').addEventListener('click', (e) => {
+  e.preventDefault();
+  showLogin();
+});
+
+// self photo
+$('regPhoto').addEventListener('change', async (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  try {
+    regState.self.photo = await compressPhoto(f);
+    $('regPhotoPreview').src = regState.self.photo;
+    $('regPhotoPreview').style.display = 'block';
+  } catch (_) { Notify.toast('Photo', 'Could not read that image', 'error'); }
+});
+
+// self address geocode
+$('regGeoAddress').addEventListener('click', async () => {
+  const addr = $('regAddress').value.trim();
+  if (!addr) return;
+  $('regAddressGeo').textContent = 'Locating…';
+  try {
+    const res = await geocode(addr);
+    regState.self.addressGeo = res ? { address: res.address, lat: res.lat, lng: res.lng } : { address: addr, lat: null, lng: null };
+    $('regAddressGeo').textContent = res ? `Located: ${res.address}` : 'Saved address (no map pin).';
+  } catch (err) {
+    regState.self.addressGeo = { address: addr, lat: null, lng: null };
+    $('regAddressGeo').textContent = 'Map unavailable: ' + (err.message || 'could not locate');
+  }
+});
+
+// self Aadhaar OTP
+$('regSendOtp').addEventListener('click', async () => {
+  const num = $('regAadhaar').value.trim();
+  if (!isValidAadhaarFormat(num)) return Notify.toast('Aadhaar', 'Enter a valid 12-digit number', 'error');
+  $('regAadhaarStatus').textContent = 'Sending OTP…';
+  const res = await Aadhaar.sendOtp(num);
+  if (!res.ok) { $('regAadhaarStatus').textContent = res.error; return; }
+  regState.self.aadhaarTxnId = res.txnId;
+  $('regOtpBox').classList.remove('hidden');
+  $('regAadhaarStatus').textContent = res.devHint ? `OTP sent (demo OTP: ${res.devHint})` : 'OTP sent.';
+});
+$('regVerifyOtp').addEventListener('click', async () => {
+  const res = await Aadhaar.verifyOtp(regState.self.aadhaarTxnId, $('regOtp').value.trim());
+  if (!res.ok) { $('regAadhaarStatus').textContent = res.error; return; }
+  regState.self.aadhaarVerified = true;
+  $('regAadhaarStatus').textContent = '✓ Aadhaar verified';
+  $('regOtpBox').classList.add('hidden');
+  refreshRegisterEnabled();
+});
+
+// ── member cards (dynamic) ────────────────────────────────────────────────────
+let _memberSeq = 0;
+$('regAddMember').addEventListener('click', () => addMemberCard());
+
+function addMemberCard() {
+  const mid = 'm' + (++_memberSeq);
+  const m = { id: mid, photo: null, addressGeo: null, sameAsPrimary: true, aadhaarTxnId: null, aadhaarVerified: false };
+  regState.members.push(m);
+
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.style.background = '#f8fafc';
+  card.dataset.mid = mid;
+  card.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong>Member</strong>
+      <button class="btn danger small" data-del style="max-width:90px">Remove</button>
+    </div>
+    <div class="row"><input data-f="forename" placeholder="Forename" /><input data-f="surname" placeholder="Surname" /></div>
+    <div class="row">
+      <select data-f="sex"><option value="">Sex…</option><option>Female</option><option>Male</option><option>Other</option></select>
+      <input data-f="dob" type="date" />
+    </div>
+    <input data-f="relationship" placeholder="Relationship (optional)" />
+    <label>Photo</label>
+    <input data-f="photo" type="file" accept="image/*" />
+    <img data-el="photoPrev" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;margin-top:6px;display:none" />
+    <label style="margin-top:8px"><input type="checkbox" data-f="same" checked /> Address same as primary</label>
+    <div data-el="addrBox" class="hidden">
+      <input data-f="address" placeholder="Member address" />
+      <button class="btn secondary small" data-act="geo" style="margin-top:6px">Locate address</button>
+      <p class="muted" data-el="addrGeo"></p>
+    </div>
+    <label>Aadhaar number</label>
+    <input data-f="aadhaar" inputmode="numeric" maxlength="12" placeholder="XXXXXXXXXXXX" />
+    <button class="btn secondary small" data-act="sendOtp" style="margin-top:6px">Send OTP</button>
+    <div data-el="otpBox" class="hidden" style="margin-top:8px">
+      <input data-f="otp" inputmode="numeric" placeholder="6-digit OTP" />
+      <button class="btn small" data-act="verifyOtp" style="margin-top:6px">Verify OTP</button>
+    </div>
+    <p class="muted" data-el="aadhaarStatus"></p>
+  `;
+  $('regMembers').appendChild(card);
+
+  const q = (sel) => card.querySelector(sel);
+  q('[data-del]').addEventListener('click', () => {
+    regState.members = regState.members.filter((x) => x.id !== mid);
+    card.remove();
+    refreshRegisterEnabled();
+  });
+  q('[data-f="same"]').addEventListener('change', (e) => {
+    m.sameAsPrimary = e.target.checked;
+    q('[data-el="addrBox"]').classList.toggle('hidden', e.target.checked);
+  });
+  q('[data-f="photo"]').addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    try { m.photo = await compressPhoto(f); q('[data-el="photoPrev"]').src = m.photo; q('[data-el="photoPrev"]').style.display = 'block'; }
+    catch (_) { Notify.toast('Photo', 'Could not read image', 'error'); }
+  });
+  q('[data-act="geo"]').addEventListener('click', async () => {
+    const addr = q('[data-f="address"]').value.trim();
+    if (!addr) return;
+    q('[data-el="addrGeo"]').textContent = 'Locating…';
+    try {
+      const res = await geocode(addr);
+      m.addressGeo = res ? { address: res.address, lat: res.lat, lng: res.lng } : { address: addr, lat: null, lng: null };
+      q('[data-el="addrGeo"]').textContent = res ? `Located: ${res.address}` : 'Saved address (no map pin).';
+    } catch (err) {
+      m.addressGeo = { address: addr, lat: null, lng: null };
+      q('[data-el="addrGeo"]').textContent = 'Map unavailable: ' + (err.message || 'could not locate');
+    }
+  });
+  q('[data-act="sendOtp"]').addEventListener('click', async () => {
+    const num = q('[data-f="aadhaar"]').value.trim();
+    if (!isValidAadhaarFormat(num)) return Notify.toast('Aadhaar', 'Enter a valid 12-digit number', 'error');
+    q('[data-el="aadhaarStatus"]').textContent = 'Sending OTP…';
+    const res = await Aadhaar.sendOtp(num);
+    if (!res.ok) { q('[data-el="aadhaarStatus"]').textContent = res.error; return; }
+    m.aadhaarTxnId = res.txnId;
+    q('[data-el="otpBox"]').classList.remove('hidden');
+    q('[data-el="aadhaarStatus"]').textContent = res.devHint ? `OTP sent (demo OTP: ${res.devHint})` : 'OTP sent.';
+  });
+  q('[data-act="verifyOtp"]').addEventListener('click', async () => {
+    const res = await Aadhaar.verifyOtp(m.aadhaarTxnId, q('[data-f="otp"]').value.trim());
+    if (!res.ok) { q('[data-el="aadhaarStatus"]').textContent = res.error; return; }
+    m.aadhaarVerified = true;
+    q('[data-el="aadhaarStatus"]').textContent = '✓ Aadhaar verified';
+    q('[data-el="otpBox"]').classList.add('hidden');
+    refreshRegisterEnabled();
+  });
+  q('[data-f="forename"]').addEventListener('input', () => { m._fore = q('[data-f="forename"]').value.trim(); });
+
+  refreshRegisterEnabled();
+}
+
+/** Register is enabled only when self + every member has verified Aadhaar. */
+function refreshRegisterEnabled() {
+  const allVerified = regState.self.aadhaarVerified && regState.members.every((m) => m.aadhaarVerified);
+  $('regSubmit').disabled = !allVerified;
+  $('regSubmitHint').textContent = allVerified
+    ? 'All verified — you can register.'
+    : 'Verify Aadhaar for everyone to enable registration.';
+}
+
+$('regSubmit').addEventListener('click', async () => {
+  const forename = $('regForename').value.trim();
+  const surname = $('regSurname').value.trim();
+  const phone = $('regPhone').value.trim();
+  if (!forename || !surname) return Notify.toast('Registration', 'Enter your name', 'error');
+  if (!phone) return Notify.toast('Registration', 'Enter your mobile number', 'error');
+  if (!regState.self.addressGeo) return Notify.toast('Registration', 'Locate your address', 'error');
+  if (!regState.self.aadhaarVerified) return Notify.toast('Registration', 'Verify your Aadhaar', 'error');
+
+  // no phone clash
+  const clients = await Data.getAll(COLLECTION.CLIENTS);
+  if (clients.some((c) => (c.phone || '').replace(/\s/g, '') === phone.replace(/\s/g, ''))) {
+    return Notify.toast('Registration', 'A client with this number already exists.', 'error');
+  }
+
+  // assemble members from DOM + regState
+  const members = regState.members.map((m) => {
+    const card = document.querySelector(`[data-mid="${m.id}"]`);
+    const g = (f) => card.querySelector(`[data-f="${f}"]`).value.trim();
+    return {
+      forename: g('forename'), surname: g('surname'), sex: g('sex'), dob: g('dob'),
+      relationship: g('relationship'), photo: m.photo,
+      address: m.sameAsPrimary ? regState.self.addressGeo : (m.addressGeo || regState.self.addressGeo),
+      aadhaar: { number: g('aadhaar'), verified: true }
+    };
+  });
+
+  const client = createClient({
+    forename, surname, phone,
+    sex: $('regSex').value, dob: $('regDob').value,
+    photo: regState.self.photo,
+    address: regState.self.addressGeo,
+    aadhaar: { number: $('regAadhaar').value.trim(), verified: true },
+    members
+  });
+  client.accessCode = String(Math.floor(100000 + Math.random() * 900000));
+
+  const btn = $('regSubmit');
+  btn.disabled = true; btn.textContent = 'Registering…';
+  try {
+    await Data.write(COLLECTION.CLIENTS, client);
+    alert(`Registration complete!\n\nYour login:\nPhone: ${phone}\nAccess code: ${client.accessCode}\n\nPlease keep this code safe.`);
+    Notify.toast('Registered', `You can sign in now · access code ${client.accessCode}`, 'success');
+    showLogin();
+  } catch (e) {
+    Notify.toast('Registration failed', e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Register';
+  }
+});
 
 $('loginBtn').addEventListener('click', async () => {
   const phone = $('loginPhone').value.trim();
