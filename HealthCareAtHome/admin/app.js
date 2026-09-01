@@ -26,7 +26,7 @@ const state = { clients: [], caregivers: [], bookings: [], services: [] };
 const cgFilter = { name: '', spec: '', sex: '', km: null, point: null }; // point: {lat,lng}
 const dashFilter = { includeCompleted: false };
 // per-booking caregiver search (local overrides; never touches app-wide Settings)
-const inviteState = { bookingId: null, radiusKm: null, mode: 'gps', name: '', sex: '', selected: new Set() };
+const inviteState = { bookingId: null, radiusKm: null, mode: 'gps', name: '', sex: '', includeOffline: false, selected: new Set() };
 
 function boot() {
   registerServiceWorker();
@@ -599,10 +599,13 @@ function openInviteModal(id) {
   $('ivId').textContent = '#' + b.id.slice(-6);
   $('ivBookingMeta').textContent =
     `${labelize(b.speciality)} · ${b.location.address || b.location.label || 'service location'} · scheduled ${b.scheduledAt ? fmtDateTime(b.scheduledAt) : '—'}`;
+  inviteState.includeOffline = false;
   $('ivName').value = '';
   $('ivSex').value = '';
   $('ivRadius').value = inviteState.radiusKm;
   $('ivMode').value = inviteState.mode;
+  $('ivIncludeOffline').checked = false;
+  $('ivSelectAll').checked = false;
   $('ivStatus').textContent = '';
   renderInviteResults();
   $('inviteModal').classList.remove('hidden');
@@ -624,6 +627,12 @@ function renderInviteResults() {
     (c.status || CaregiverStatus.ACTIVE) !== CaregiverStatus.REGISTERED &&
     Array.isArray(c.specialities) && c.specialities.includes(b.speciality));
 
+  // by default show only currently-available caregivers; the checkbox widens
+  // the pool to offline ones (matched by last-seen GPS, else service location)
+  if (!inviteState.includeOffline) {
+    list = list.filter((c) => c.availability === Availability.AVAILABLE);
+  }
+
   if (inviteState.name) {
     const q = inviteState.name.toLowerCase();
     list = list.filter((c) => (c.name || '').toLowerCase().includes(q));
@@ -636,19 +645,26 @@ function renderInviteResults() {
     .filter((x) => !isFinite(radius) ? true : (x.dist <= radius))
     .sort((a, b2) => (a.dist ?? Infinity) - (b2.dist ?? Infinity));
 
-  $('ivCount').textContent = `${withDist.length} match(es) within ${isFinite(radius) ? radius + ' km' : 'any range'}`;
+  $('ivCount').textContent =
+    `${withDist.length} match(es) within ${isFinite(radius) ? radius + ' km' : 'any range'}`
+    + (inviteState.includeOffline ? ' · incl. offline' : ' · available only');
 
   $('ivRows').innerHTML = withDist.map(({ cg: c, dist }) => {
     const checked = inviteState.selected.has(c.id) ? 'checked' : '';
     const distTxt = isFinite(dist) ? `${dist.toFixed(1)} km` : 'n/a';
+    const offline = c.availability !== Availability.AVAILABLE;
     const availBadge = c.availability === Availability.AVAILABLE ? 'in_service'
       : c.availability === Availability.ON_SERVICE ? 'accepted' : 'cancelled';
+    // for offline caregivers, note the last-seen time of their GPS point
+    const lastSeen = offline && c.location && c.location.at
+      ? `<br><span class="muted" style="font-size:11px">last seen ${fmtDateTime(c.location.at)}</span>`
+      : (offline ? '<br><span class="muted" style="font-size:11px">service location</span>' : '');
     return `<tr>
       <td><input type="checkbox" data-iv-pick="${c.id}" ${checked} /></td>
       <td>${c.name}</td>
       <td>${c.sex || '—'}</td>
       <td style="font-size:12px">${(c.specialities || []).map(labelize).join(', ')}</td>
-      <td><span class="badge ${availBadge}">${labelize(c.availability)}</span></td>
+      <td><span class="badge ${availBadge}">${labelize(c.availability)}</span>${lastSeen}</td>
       <td>${distTxt}</td>
       <td>★ ${c.rating || 'new'}</td>
     </tr>`;
@@ -658,8 +674,18 @@ function renderInviteResults() {
     cb.addEventListener('change', () => {
       const cid = cb.dataset.ivPick;
       if (cb.checked) inviteState.selected.add(cid); else inviteState.selected.delete(cid);
+      syncSelectAllBox();
     });
   });
+  syncSelectAllBox();
+}
+
+/** Reflect whether every currently-shown caregiver is selected. */
+function syncSelectAllBox() {
+  const boxes = [...document.querySelectorAll('#ivRows [data-iv-pick]')];
+  const all = boxes.length > 0 && boxes.every((cb) => cb.checked);
+  const el = $('ivSelectAll');
+  if (el) el.checked = all;
 }
 
 function wireInviteModal() {
@@ -667,8 +693,19 @@ function wireInviteModal() {
   $('ivSex').addEventListener('change', () => { inviteState.sex = $('ivSex').value; renderInviteResults(); });
   $('ivRadius').addEventListener('input', () => { inviteState.radiusKm = Number($('ivRadius').value) || null; renderInviteResults(); });
   $('ivMode').addEventListener('change', () => { inviteState.mode = $('ivMode').value; renderInviteResults(); });
+  $('ivIncludeOffline').addEventListener('change', () => { inviteState.includeOffline = $('ivIncludeOffline').checked; renderInviteResults(); });
   $('ivSearch').addEventListener('click', renderInviteResults);
   $('ivClose').addEventListener('click', closeInviteModal);
+
+  // single-click include/clear every caregiver currently shown
+  $('ivSelectAll').addEventListener('change', () => {
+    const on = $('ivSelectAll').checked;
+    document.querySelectorAll('#ivRows [data-iv-pick]').forEach((cb) => {
+      cb.checked = on;
+      const cid = cb.dataset.ivPick;
+      if (on) inviteState.selected.add(cid); else inviteState.selected.delete(cid);
+    });
+  });
 
   $('ivLink').addEventListener('click', async () => {
     const b = state.bookings.find((x) => x.id === inviteState.bookingId);

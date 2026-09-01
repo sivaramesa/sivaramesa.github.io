@@ -173,9 +173,17 @@
               </select>
             </div>
           </div>
+          <div style="margin:6px 0">
+            <label style="margin:0;display:flex;align-items:center;gap:6px;font-weight:normal">
+              <input type="checkbox" id="ivIncludeOffline" /> Include offline caregivers (uses last-seen GPS, else registered service location)
+            </label>
+          </div>
           <p class="muted" style="font-size:12px;margin:4px 0">Overrides here affect this search only — the app-wide setting is unchanged. Distances are measured from the booking's service location.</p>
-          <div class="row" style="margin:8px 0">
+          <div class="row" style="margin:8px 0;align-items:center">
             <button id="ivSearch" class="btn small">Search</button>
+            <label style="margin:0;display:flex;align-items:center;gap:6px;font-weight:normal;font-size:13px">
+              <input type="checkbox" id="ivSelectAll" /> Select all shown
+            </label>
             <span id="ivCount" class="muted"></span>
           </div>
           <div class="scroll" style="max-height:38vh">
