@@ -49,7 +49,7 @@ export function loadMaps() {
 
     const s = document.createElement('script');
     s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(CONFIG.googleMapsApiKey)}` +
-      `&libraries=places,geometry&callback=${cb}`;
+      `&libraries=places,geometry&loading=async&callback=${cb}`;
     s.async = true;
     s.defer = true;
     s.onerror = () => {
