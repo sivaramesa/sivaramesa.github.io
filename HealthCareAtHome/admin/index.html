@@ -113,7 +113,12 @@
         <div class="card center"><div class="muted">Revenue (₹)</div><div id="mRevenue" class="stat">0</div></div>
       </div>
       <div class="card">
-        <h2>All bookings (with secret codes)</h2>
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <h2 style="margin:0">All bookings (with secret codes)</h2>
+          <label style="margin:0;display:flex;align-items:center;gap:6px;font-weight:normal">
+            <input type="checkbox" id="includeCompleted" /> Include completed records
+          </label>
+        </div>
         <div class="scroll">
           <table>
             <thead><tr>

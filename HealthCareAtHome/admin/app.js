@@ -24,6 +24,7 @@ const $ = (id) => document.getElementById(id);
 
 const state = { clients: [], caregivers: [], bookings: [], services: [] };
 const cgFilter = { name: '', spec: '', sex: '', km: null, point: null }; // point: {lat,lng}
+const dashFilter = { includeCompleted: false };
 
 function boot() {
   registerServiceWorker();
@@ -34,6 +35,7 @@ function boot() {
   wireSettings();
   wireServices();
   wireCaregiverFilters();
+  wireDashboardFilters();
 
   Sync.subscribe(COLLECTION.CLIENTS, (list) => { state.clients = list; renderClients(); renderDashboard(); });
   Sync.subscribe(COLLECTION.CAREGIVERS, (list) => { state.caregivers = list; renderCaregivers(); renderRegistrations(); renderDashboard(); });
@@ -179,6 +181,16 @@ function escapeAttr(s) {
 }
 
 // ── dashboard (req 5: all bookings + all secret codes) ───────────────────────
+function wireDashboardFilters() {
+  const cb = $('includeCompleted');
+  if (!cb) return;
+  cb.checked = dashFilter.includeCompleted;
+  cb.addEventListener('change', () => {
+    dashFilter.includeCompleted = cb.checked;
+    renderDashboard();
+  });
+}
+
 function renderDashboard() {
   const active = state.bookings.filter((b) =>
     ![BookingStatus.COMPLETED, BookingStatus.CANCELLED, BookingStatus.EXPIRED].includes(b.status));
@@ -189,7 +201,11 @@ function renderDashboard() {
   $('mDone').textContent = done.length;
   $('mRevenue').textContent = revenue.toFixed(0);
 
-  $('bookingRows').innerHTML = state.bookings.map((b) => {
+  const rows = dashFilter.includeCompleted
+    ? state.bookings
+    : state.bookings.filter((b) => b.status !== BookingStatus.COMPLETED);
+
+  $('bookingRows').innerHTML = rows.map((b) => {
     const client = state.clients.find((c) => c.id === b.clientId);
     const cg = state.caregivers.find((c) => c.id === b.caregiverId);
     const recips = (b.recipients || []).map((r) => r.name).join(', ') || '—';
