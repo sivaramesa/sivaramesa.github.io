@@ -51,6 +51,25 @@ function renderSyncDot(status) {
   dot.title = !status.online ? 'offline' : status.pending ? `${status.pending} pending` : 'synced';
 }
 
+/**
+ * Wire a click handler that cannot double-fire: while the async handler runs,
+ * the button is disabled (and re-entry is ignored), then re-enabled. Prevents
+ * a second tap from firing a duplicate/illegal state transition.
+ */
+function guardedClick(id, handler) {
+  const btn = $(id);
+  if (!btn) return;
+  let busy = false;
+  btn.addEventListener('click', async () => {
+    if (busy) return;
+    busy = true;
+    btn.disabled = true;
+    btn.classList.add('is-busy');
+    try { await handler(); }
+    finally { busy = false; btn.disabled = false; btn.classList.remove('is-busy'); }
+  });
+}
+
 // ── login ─────────────────────────────────────────────────────────────────────
 $('loginBtn').addEventListener('click', async () => {
   const phone = $('loginPhone').value.trim();
@@ -443,8 +462,11 @@ function renderJob(b) {
 }
 
 // req 6: start travel -> establish navigation + share live location
-$('startTravelBtn').addEventListener('click', async () => {
+guardedClick('startTravelBtn', async () => {
   const b = await Data.get(COLLECTION.BOOKINGS, state.activeJobId);
+  if (!b || b.status !== BookingStatus.ACCEPTED) {
+    return Notify.toast('Already updated', 'This job is no longer awaiting travel.', 'info');
+  }
   try {
     await Lifecycle.startTravel(b, state.cg);
     startSharing(b.id);
@@ -490,19 +512,30 @@ function stopSharing() {
 // req 7: arrival — keep sharing location so the client's start gate and the
 // caregiver's own complete gate have a fresh position (needed when location
 // verification is enabled).
-$('arrivedBtn').addEventListener('click', async () => {
+guardedClick('arrivedBtn', async () => {
   const b = await Data.get(COLLECTION.BOOKINGS, state.activeJobId);
+  if (!b || b.status !== BookingStatus.EN_ROUTE) {
+    // already arrived (or state moved on) — a duplicate tap is a safe no-op
+    return Notify.toast('Already updated', 'Arrival is already recorded.', 'info');
+  }
   // push one fresh location immediately, then keep the watch running
   try { const p = await currentPosition(); await Lifecycle.pushLocation(b, p.lat, p.lng); } catch (_) {}
-  await Lifecycle.markArrived(b);
-  startSharing(b.id); // keep location fresh through ARRIVED / IN_SERVICE
-  Notify.toast('Arrived', 'Read the start code to the client to begin the service.', 'info');
+  try {
+    await Lifecycle.markArrived(b);
+    startSharing(b.id); // keep location fresh through ARRIVED / IN_SERVICE
+    Notify.toast('Arrived', 'Read the start code to the client to begin the service.', 'info');
+  } catch (e) {
+    Notify.toast('Could not mark arrived', e.message, 'error');
+  }
 });
 
 // req 8: request completion -> completion code issued to client.
 // Gated by proximity when location verification is enabled.
-$('completeBtn').addEventListener('click', async () => {
+guardedClick('completeBtn', async () => {
   const b = await Data.get(COLLECTION.BOOKINGS, state.activeJobId);
+  if (!b || b.status !== BookingStatus.IN_SERVICE) {
+    return Notify.toast('Already updated', 'Completion is already requested.', 'info');
+  }
   const s = Settings.current();
   if (s.locationVerification) {
     let here = null;
@@ -515,9 +548,13 @@ $('completeBtn').addEventListener('click', async () => {
       return Notify.toast('Location check', msg, 'error');
     }
   }
-  await Lifecycle.requestCompletion(b);
-  stopSharing();
-  Notify.toast('Completion requested', 'Client will confirm with the completion code + rating.', 'info');
+  try {
+    await Lifecycle.requestCompletion(b);
+    stopSharing();
+    Notify.toast('Completion requested', 'Client will confirm with the completion code + rating.', 'info');
+  } catch (e) {
+    Notify.toast('Could not request completion', e.message, 'error');
+  }
 });
 
 // ── helpers ───────────────────────────────────────────────────────────────────

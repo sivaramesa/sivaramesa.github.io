@@ -77,6 +77,7 @@ textarea { min-height: 72px; resize: vertical; }
 }
 .btn:hover { background: var(--brand-dark); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.is-busy { cursor: progress; }
 .btn.secondary { background: #fff; color: var(--brand); border: 1px solid var(--brand); }
 .btn.ok { background: var(--ok); }
 .btn.danger { background: var(--danger); }
