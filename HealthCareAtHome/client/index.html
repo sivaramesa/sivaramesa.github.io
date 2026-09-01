@@ -64,9 +64,22 @@
       </div>
       <p id="activeSummary" class="muted"></p>
 
+      <div id="availabilityBox" class="card hidden" style="background:#eef6ff">
+        <div id="availabilityLine"></div>
+      </div>
+
       <div id="caregiverBox" class="card hidden" style="background:#f8fafc">
-        <strong id="cgName"></strong>
-        <div class="muted" id="cgMeta"></div>
+        <div style="display:flex;gap:12px;align-items:center">
+          <img id="cgPhoto" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;background:#e5e7eb;display:none" />
+          <div>
+            <strong id="cgName"></strong>
+            <div class="muted" id="cgMeta"></div>
+          </div>
+        </div>
+        <div id="cgStartCodeWrap" class="hidden" style="margin-top:10px">
+          <div class="muted">Service start code</div>
+          <span id="cgStartCode" class="code-chip"></span>
+        </div>
       </div>
 
       <!-- Live tracking -->
@@ -79,6 +92,7 @@
       <div id="startVerifyBox" class="hidden">
         <label>Caregiver arrived. Your <b>service start code</b> is:</label>
         <span id="startCodeShown" class="code-chip"></span>
+        <p id="proximityLine" class="muted center hidden" style="margin-top:8px"></p>
         <label style="margin-top:12px">Confirm with the caregiver, then enter the code to begin:</label>
         <input id="startCodeInput" type="text" inputmode="numeric" placeholder="6-digit code" />
         <button id="verifyStartBtn" class="btn ok" style="margin-top:8px">Verify &amp; start service</button>

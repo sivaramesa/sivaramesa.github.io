@@ -111,9 +111,14 @@ export const Lifecycle = {
     return booking;
   },
 
-  /** req 6 — push a live location ping (called on an interval while en route). */
+  /**
+   * req 6 — push a live location ping. Kept flowing through EN_ROUTE, ARRIVED
+   * and IN_SERVICE so the location-verification gate always has a fresh
+   * caregiver position for start/complete checks.
+   */
   async pushLocation(booking, lat, lng) {
-    if (booking.status !== BookingStatus.EN_ROUTE) return booking;
+    const trackable = [BookingStatus.EN_ROUTE, BookingStatus.ARRIVED, BookingStatus.IN_SERVICE];
+    if (!trackable.includes(booking.status)) return booking;
     const eta = estimateEtaMinutes(distanceKm({ lat, lng }, booking.location));
     booking.tracking = { lat, lng, updatedAt: nowIso(), etaMinutes: eta };
     booking.updatedAt = nowIso();

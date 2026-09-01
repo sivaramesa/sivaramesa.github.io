@@ -98,6 +98,7 @@ export function createCaregiver({ name, phone, specialities = [], lat = null, ln
     name,
     phone,
     specialities,        // array of Speciality values
+    photo: null,         // data-URL thumbnail (shown as identity proof)
     availability: Availability.UNAVAILABLE,
     rating: 0,
     ratingCount: 0,

@@ -24,6 +24,42 @@ export function distanceKm(a, b) {
   return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h));
 }
 
+/** Straight-line distance in metres between two {lat,lng} points (Infinity if unknown). */
+export function distanceMeters(a, b) {
+  const km = distanceKm(a, b);
+  return isFinite(km) ? km * 1000 : Infinity;
+}
+
+/**
+ * Location-verification policy check, shared by the client (start gate) and
+ * caregiver (complete gate).
+ *
+ * @param {{lat,lng}} caregiverLoc  the caregiver's current/last-known location
+ * @param {{lat,lng}} serviceLoc    the booking's service location
+ * @param {{locationVerification:boolean, verifyRadiusMeters:number}} settings
+ * @returns {{ ok:boolean, distanceMeters:number|null, reason:string }}
+ *   - When verification is OFF: always ok (no check).
+ *   - When ON: ok only if both locations have coords AND within the radius.
+ *     Missing coordinates => not ok (fail-closed).
+ */
+export function checkProximity(caregiverLoc, serviceLoc, settings) {
+  if (!settings || !settings.locationVerification) {
+    return { ok: true, distanceMeters: null, reason: 'verification off' };
+  }
+  const radius = settings.verifyRadiusMeters || 50;
+  const cHas = caregiverLoc && caregiverLoc.lat != null && caregiverLoc.lng != null;
+  const sHas = serviceLoc && serviceLoc.lat != null && serviceLoc.lng != null;
+  if (!cHas || !sHas) {
+    return { ok: false, distanceMeters: null, reason: 'location unavailable' };
+  }
+  const d = distanceMeters(caregiverLoc, serviceLoc);
+  return {
+    ok: d <= radius,
+    distanceMeters: Math.round(d),
+    reason: d <= radius ? 'in range' : 'out of range'
+  };
+}
+
 /** Rough ETA in minutes assuming an average urban speed (km/h). */
 export function estimateEtaMinutes(distKm, avgSpeedKmh = 25) {
   if (!isFinite(distKm)) return null;

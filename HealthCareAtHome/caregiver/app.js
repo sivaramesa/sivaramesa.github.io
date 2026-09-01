@@ -12,9 +12,10 @@ import { Data, Sync } from '../shared/sync.js';
 import { Auth } from '../shared/auth.js';
 import { Lifecycle } from '../shared/lifecycle.js';
 import { Notify } from '../shared/notify.js';
-import { eligibleCaregivers, distanceKm } from '../shared/geo.js';
+import { eligibleCaregivers, distanceKm, checkProximity } from '../shared/geo.js';
 import { currentPosition, watchPosition } from '../shared/maps.js';
 import { CONFIG } from '../shared/config.js';
+import { Settings } from '../shared/settings.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -31,6 +32,7 @@ async function boot() {
   registerServiceWorker();
   Sync.start();
   Sync.onStatus(renderSyncDot);
+  Settings.subscribe(() => {}); // keep Settings.current() fresh for the complete gate
 
   const sess = Auth.session();
   if (sess && sess.role === 'caregiver') {
@@ -247,18 +249,36 @@ function stopSharing() {
   if (state.pingTimer) { clearInterval(state.pingTimer); state.pingTimer = null; }
 }
 
-// req 7: arrival
+// req 7: arrival — keep sharing location so the client's start gate and the
+// caregiver's own complete gate have a fresh position (needed when location
+// verification is enabled).
 $('arrivedBtn').addEventListener('click', async () => {
   const b = await Data.get(COLLECTION.BOOKINGS, state.activeJobId);
+  // push one fresh location immediately, then keep the watch running
+  try { const p = await currentPosition(); await Lifecycle.pushLocation(b, p.lat, p.lng); } catch (_) {}
   await Lifecycle.markArrived(b);
-  stopSharing();
+  startSharing(b.id); // keep location fresh through ARRIVED / IN_SERVICE
   Notify.toast('Arrived', 'Read the start code to the client to begin the service.', 'info');
 });
 
-// req 8: request completion -> completion code issued to client
+// req 8: request completion -> completion code issued to client.
+// Gated by proximity when location verification is enabled.
 $('completeBtn').addEventListener('click', async () => {
   const b = await Data.get(COLLECTION.BOOKINGS, state.activeJobId);
+  const s = Settings.current();
+  if (s.locationVerification) {
+    let here = null;
+    try { here = await currentPosition(); } catch (_) {}
+    const verdict = checkProximity(here, b.location, s);
+    if (!verdict.ok) {
+      const msg = verdict.reason === 'location unavailable'
+        ? 'Cannot read your location — required to complete service.'
+        : `You are ${verdict.distanceMeters ?? '—'} m away. Must be within ${s.verifyRadiusMeters} m to complete.`;
+      return Notify.toast('Location check', msg, 'error');
+    }
+  }
   await Lifecycle.requestCompletion(b);
+  stopSharing();
   Notify.toast('Completion requested', 'Client will confirm with the completion code + rating.', 'info');
 });
 

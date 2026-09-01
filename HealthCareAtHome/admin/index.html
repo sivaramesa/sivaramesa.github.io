@@ -38,6 +38,19 @@
 
     <!-- Dashboard: all bookings + all secret codes -->
     <section id="tab-dashboard" class="tabpane">
+      <div class="card">
+        <h2>Location verification</h2>
+        <p class="muted">When enabled, a caregiver can start and complete a service only while within the set range of the service location. Client sees the caregiver's live distance and can start only when in range.</p>
+        <div class="row" style="align-items:center">
+          <label style="margin:0"><input type="checkbox" id="locVerifyToggle" /> Require caregiver location verification</label>
+          <div style="max-width:220px">
+            <label style="margin:0">Allowed range (metres)</label>
+            <input type="number" id="verifyRadius" min="10" step="10" value="50" />
+          </div>
+          <button id="saveSettingsBtn" class="btn small" style="max-width:140px">Save</button>
+        </div>
+        <p id="settingsStatus" class="muted"></p>
+      </div>
       <div class="grid cols-3">
         <div class="card center"><div class="muted">Active bookings</div><div id="mActive" class="stat">0</div></div>
         <div class="card center"><div class="muted">Completed</div><div id="mDone" class="stat">0</div></div>
@@ -84,6 +97,9 @@
         <label>Specialities</label>
         <select id="cgSpecs" multiple size="6"></select>
         <input id="cgCode2" placeholder="Access code" style="margin-top:8px" />
+        <label style="margin-top:8px">Photo (for identity proof)</label>
+        <input id="cgPhoto2" type="file" accept="image/*" />
+        <img id="cgPhotoPreview" alt="" style="width:64px;height:64px;border-radius:8px;object-fit:cover;margin-top:6px;display:none" />
         <button id="addCgBtn" class="btn" style="margin-top:10px">Add caregiver</button>
       </div>
       <div class="card">

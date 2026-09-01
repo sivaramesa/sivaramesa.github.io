@@ -16,6 +16,8 @@ import { Lifecycle } from '../shared/lifecycle.js';
 import { Notify } from '../shared/notify.js';
 import { geocode, createLiveMap } from '../shared/maps.js';
 import { CONFIG } from '../shared/config.js';
+import { Settings } from '../shared/settings.js';
+import { checkProximity, eligibleCaregivers } from '../shared/geo.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -26,7 +28,9 @@ const state = {
   liveMap: null,
   pendingLocation: null,
   stars: 0,
-  unsubBookings: null
+  unsubBookings: null,
+  settings: { locationVerification: false, verifyRadiusMeters: 50 },
+  currentBooking: null
 };
 
 // ── boot ──────────────────────────────────────────────────────────────────
@@ -35,8 +39,18 @@ async function boot() {
   Sync.start();
   Sync.onStatus(renderSyncDot);
 
-  // keep a live copy of caregivers (public profiles) for display
-  Sync.subscribe(COLLECTION.CAREGIVERS, (list) => { state.caregivers = list; });
+  // keep a live copy of caregivers (public profiles) for display; re-render the
+  // active booking so the "available within range" count stays live.
+  Sync.subscribe(COLLECTION.CAREGIVERS, (list) => {
+    state.caregivers = list;
+    if (state.currentBooking) renderActive(state.currentBooking);
+  });
+
+  // live location-verification policy; re-render the active booking on change
+  Settings.subscribe((s) => {
+    state.settings = s;
+    if (state.currentBooking) renderActive(state.currentBooking);
+  });
 
   const sess = Auth.session();
   if (sess && sess.role === 'client') {
@@ -189,6 +203,7 @@ $('payBookBtn').addEventListener('click', async () => {
 
 // ── render active booking (drives every downstream stage) ────────────────────
 async function renderActive(b) {
+  state.currentBooking = b;
   $('bookView').classList.add('hidden');
   $('activeView').classList.remove('hidden');
 
@@ -196,6 +211,16 @@ async function renderActive(b) {
   $('activeStatus').textContent = labelize(b.status);
   $('activeSummary').textContent =
     `${labelize(b.speciality)} · ${b.location.address || b.location.label} · ₹${b.price}`;
+
+  // live count of caregivers actively available within range, while broadcasting
+  const showAvail = b.status === BookingStatus.BROADCAST;
+  $('availabilityBox').classList.toggle('hidden', !showAvail);
+  if (showAvail) {
+    const count = eligibleCaregivers(b, state.caregivers, b.radiusKm).length;
+    $('availabilityLine').innerHTML = count > 0
+      ? `<strong>${count}</strong> caregiver${count === 1 ? '' : 's'} available within ${b.radiusKm} km — waiting for one to accept…`
+      : `No caregivers currently available within ${b.radiusKm} km. Waiting for someone to come online…`;
+  }
 
   // assigned caregiver card (req 4: details shared with client)
   const hasCg = !!b.caregiverId;
@@ -206,6 +231,15 @@ async function renderActive(b) {
     $('cgMeta').textContent = cg
       ? `${(cg.specialities || []).map(labelize).join(', ')} · ★ ${cg.rating || 'new'}`
       : '';
+    const photoEl = $('cgPhoto');
+    if (cg && cg.photo) { photoEl.src = cg.photo; photoEl.style.display = 'block'; }
+    else { photoEl.removeAttribute('src'); photoEl.style.display = 'none'; }
+
+    // show the start code in the caregiver card from acceptance onward
+    // (before the caregiver's own start box appears), masked per the gate.
+    const preArrival = [BookingStatus.ACCEPTED, BookingStatus.EN_ROUTE].includes(b.status);
+    $('cgStartCodeWrap').classList.toggle('hidden', !preArrival);
+    if (preArrival) $('cgStartCode').textContent = startCodeDisplay(b).text;
   }
 
   // toggle stage-specific panels
@@ -213,7 +247,10 @@ async function renderActive(b) {
   $('trackBox').classList.toggle('hidden', !showTrack);
   const showStartVerify = b.status === BookingStatus.ARRIVED;
   $('startVerifyBox').classList.toggle('hidden', !showStartVerify);
-  if (showStartVerify) $('startCodeShown').textContent = b.codes.startCode || '——————';
+  if (showStartVerify) {
+    $('startCodeShown').textContent = b.codes.startCode || '——————';
+    applyStartProximityGate(b);
+  }
   const showComplete = b.status === BookingStatus.COMPLETION_PENDING;
   $('completeBox').classList.toggle('hidden', !showComplete);
   if (showComplete) $('completeCodeShown').textContent = b.codes.completeCode || '——————';
@@ -244,9 +281,67 @@ async function renderLiveTracking(b) {
   }
 }
 
+/**
+ * Single source of truth for whether the start code is revealed to the client.
+ * When location verification is ON, the code is masked until the caregiver is
+ * within range. When OFF, always revealed. Returns the current proximity
+ * verdict too so the UI can show distance.
+ */
+function startCodeDisplay(b) {
+  const s = state.settings;
+  const real = b.codes.startCode || '——————';
+  if (!s.locationVerification) return { text: real, unlocked: true, verdict: null };
+  const caregiverLoc = b.tracking && b.tracking.lat != null
+    ? { lat: b.tracking.lat, lng: b.tracking.lng } : null;
+  const verdict = checkProximity(caregiverLoc, b.location, s);
+  return { text: verdict.ok ? real : '••••••', unlocked: verdict.ok, verdict };
+}
+
+/**
+ * Location-verification gate for starting service. When the flag is ON, the
+ * client can only start (and only sees the real start code) once the caregiver
+ * is within range. The caregiver's live position comes from booking.tracking
+ * (shared through arrival). When the flag is OFF, always allow + show the code.
+ */
+function applyStartProximityGate(b) {
+  const s = state.settings;
+  const line = $('proximityLine');
+  const btn = $('verifyStartBtn');
+  const codeEl = $('startCodeShown');
+  const disp = startCodeDisplay(b);
+
+  codeEl.textContent = disp.text;
+  btn.disabled = !disp.unlocked;
+
+  if (!s.locationVerification) {
+    line.classList.add('hidden');
+    return;
+  }
+
+  line.classList.remove('hidden');
+  if (disp.unlocked) {
+    line.textContent = `Caregiver is within ${s.verifyRadiusMeters} m — you can start.`;
+    line.style.color = 'var(--ok)';
+  } else {
+    line.style.color = 'var(--danger)';
+    line.textContent = disp.verdict && disp.verdict.reason === 'location unavailable'
+      ? 'Waiting for caregiver location… start unlocks when they are in range.'
+      : `Caregiver is ${disp.verdict ? (disp.verdict.distanceMeters ?? '—') : '—'} m away. Start unlocks within ${s.verifyRadiusMeters} m.`;
+  }
+}
+
 // ── req 7: verify start code ──────────────────────────────────────────────────
 $('verifyStartBtn').addEventListener('click', async () => {
   const b = await Data.get(COLLECTION.BOOKINGS, state.activeBookingId);
+  // re-check the gate at click time (defence in depth)
+  if (state.settings.locationVerification) {
+    const caregiverLoc = b.tracking && b.tracking.lat != null
+      ? { lat: b.tracking.lat, lng: b.tracking.lng } : null;
+    const verdict = checkProximity(caregiverLoc, b.location, state.settings);
+    if (!verdict.ok) {
+      return Notify.toast('Location check', 'Caregiver is not within range yet.', 'error');
+    }
+  }
   const { ok } = await Lifecycle.verifyStartCode(b, $('startCodeInput').value);
   Notify.toast(ok ? 'Verified' : 'Wrong code',
     ok ? 'Service started.' : 'Code did not match. Try again.', ok ? 'success' : 'error');

@@ -14,6 +14,7 @@ import { Data, Sync } from '../shared/sync.js';
 import { Lifecycle } from '../shared/lifecycle.js';
 import { Payments } from '../shared/payments.js';
 import { Notify } from '../shared/notify.js';
+import { Settings } from '../shared/settings.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -25,6 +26,7 @@ function boot() {
   Sync.onStatus(renderSyncDot);
   wireTabs();
   populateSpecPicker();
+  wireSettings();
 
   Sync.subscribe(COLLECTION.CLIENTS, (list) => { state.clients = list; renderClients(); renderDashboard(); });
   Sync.subscribe(COLLECTION.CAREGIVERS, (list) => { state.caregivers = list; renderCaregivers(); renderDashboard(); });
@@ -58,6 +60,29 @@ function wireTabs() {
 function populateSpecPicker() {
   $('cgSpecs').innerHTML = Object.values(Speciality)
     .map((s) => `<option value="${s}">${labelize(s)}</option>`).join('');
+}
+
+// ── location-verification settings ───────────────────────────────────────────
+function wireSettings() {
+  // reflect live settings into the controls
+  Settings.subscribe((s) => {
+    $('locVerifyToggle').checked = !!s.locationVerification;
+    $('verifyRadius').value = s.verifyRadiusMeters;
+  });
+
+  $('saveSettingsBtn').addEventListener('click', async () => {
+    const patch = {
+      locationVerification: $('locVerifyToggle').checked,
+      verifyRadiusMeters: Math.max(10, Number($('verifyRadius').value) || 50)
+    };
+    try {
+      await Settings.update(patch);
+      $('settingsStatus').textContent = `Saved · verification ${patch.locationVerification ? 'ON' : 'OFF'} · ${patch.verifyRadiusMeters} m`;
+      Notify.toast('Settings saved', 'Location verification updated', 'success');
+    } catch (e) {
+      $('settingsStatus').textContent = 'Save failed: ' + e.message;
+    }
+  });
 }
 
 // ── dashboard (req 5: all bookings + all secret codes) ───────────────────────
@@ -133,11 +158,53 @@ $('addCgBtn').addEventListener('click', async () => {
 
   const cg = createCaregiver({ name, phone, specialities: specs });
   cg.accessCode = $('cgCode2').value.trim() || String(Math.floor(100000 + Math.random() * 900000));
+  cg.photo = _pendingCgPhoto; // resized data URL captured on file select (or null)
   await Data.write(COLLECTION.CAREGIVERS, cg);
   ['cgName2', 'cgPhone2', 'cgCode2'].forEach((id) => ($(id).value = ''));
   [...$('cgSpecs').options].forEach((o) => (o.selected = false));
+  _pendingCgPhoto = null;
+  $('cgPhoto2').value = '';
+  $('cgPhotoPreview').style.display = 'none';
   Notify.toast('Caregiver added', `${name} · access code ${cg.accessCode}`, 'success');
 });
+
+// ── caregiver photo → resized data URL (avoids Firebase Storage dependency) ──
+let _pendingCgPhoto = null;
+$('cgPhoto2').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) { _pendingCgPhoto = null; $('cgPhotoPreview').style.display = 'none'; return; }
+  try {
+    _pendingCgPhoto = await resizeImageToDataUrl(file, 256, 0.8);
+    $('cgPhotoPreview').src = _pendingCgPhoto;
+    $('cgPhotoPreview').style.display = 'block';
+  } catch (_) {
+    Notify.toast('Photo', 'Could not read that image', 'error');
+    _pendingCgPhoto = null;
+  }
+});
+
+/** Downscale an image file to a square-ish thumbnail data URL (JPEG). */
+function resizeImageToDataUrl(file, maxSize, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 function renderCaregivers() {
   $('cgRows').innerHTML = state.caregivers.map((c) => `<tr>
