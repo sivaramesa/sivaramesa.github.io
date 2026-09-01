@@ -1,5 +1,5 @@
 /* Service worker — HomeCare Admin PWA. See client/sw.js for strategy notes. */
-const CACHE = 'homecare-admin-v14';
+const CACHE = 'homecare-admin-v15';
 const SHELL = [
   './',
   './index.html',

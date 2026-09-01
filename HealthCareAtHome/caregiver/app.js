@@ -12,7 +12,7 @@ import { Data, Sync } from '../shared/sync.js';
 import { Auth } from '../shared/auth.js';
 import { Lifecycle } from '../shared/lifecycle.js';
 import { Notify } from '../shared/notify.js';
-import { eligibleCaregivers, distanceKm, checkProximity } from '../shared/geo.js';
+import { eligibleCaregivers, distanceKm, caregiverDistanceKm, checkProximity } from '../shared/geo.js';
 import { currentPosition, watchPosition, geocode } from '../shared/maps.js';
 import { CONFIG } from '../shared/config.js';
 import { Settings } from '../shared/settings.js';
@@ -314,16 +314,17 @@ function renderQueue() {
     return;
   }
 
+  const matchMode = Settings.current().matchLocationMode || 'gps';
   const open = state.bookings.filter((b) => b.status === BookingStatus.BROADCAST);
-  // keep only requests where I match speciality + range
+  // keep only requests where I match speciality + range (per admin match mode)
   const forMe = open.filter((b) => {
-    const ok = eligibleCaregivers(b, [state.cg], b.radiusKm);
+    const ok = eligibleCaregivers(b, [state.cg], b.radiusKm, matchMode);
     return ok.length > 0;
   });
 
   $('queueEmpty').classList.toggle('hidden', forMe.length > 0);
   list.innerHTML = forMe.map((b) => {
-    const dist = state.cg.location ? distanceKm(state.cg.location, b.location) : null;
+    const dist = caregiverDistanceKm(state.cg, b, matchMode);
     const distTxt = dist != null && isFinite(dist) ? `${dist.toFixed(1)} km away` : 'distance n/a';
     const when = b.scheduledAt ? new Date(b.scheduledAt).toLocaleString() : '';
     const forCount = (b.recipients || []).length;

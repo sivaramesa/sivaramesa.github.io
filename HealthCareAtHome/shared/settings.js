@@ -22,7 +22,11 @@ export const DEFAULT_SETTINGS = Object.freeze({
   // Priority booking
   bookingLeadHours: 4,          // minimum lead time for a normal booking
   priorityMode: 'multiplier',   // 'multiplier' | 'percent' | 'flat'
-  priorityValue: 1.5            // multiplier: ×1.5 | percent: +50% | flat: +₹/recipient
+  priorityValue: 1.5,           // multiplier: ×1.5 | percent: +50% | flat: +₹/recipient
+  // Which caregiver location the matching uses when broadcasting/filtering.
+  // 'gps' = live shared location, 'registered' = profile operating location,
+  // 'both' = eligible if EITHER is within range (OR).
+  matchLocationMode: 'gps'
 });
 
 /**

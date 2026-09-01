@@ -83,16 +83,44 @@ function hasCoords(p) {
  * Returns caregivers annotated with `distanceKm` (Infinity when unknown),
  * nearest first (unknown-distance ones sorted last).
  */
-export function eligibleCaregivers(booking, caregivers, radiusKm) {
+/**
+ * The caregiver location point(s) to compare against, per the admin match mode:
+ *   'gps'        -> live shared location (cg.location)
+ *   'registered' -> profile operating location (cg.operatingLocation)
+ *   'both'       -> both points (eligible if EITHER is in range)
+ */
+export function caregiverMatchPoints(cg, mode = 'gps') {
+  const pts = [];
+  if (mode === 'registered') {
+    if (hasCoords(cg.operatingLocation)) pts.push(cg.operatingLocation);
+  } else if (mode === 'both') {
+    if (hasCoords(cg.location)) pts.push(cg.location);
+    if (hasCoords(cg.operatingLocation)) pts.push(cg.operatingLocation);
+  } else { // 'gps'
+    if (hasCoords(cg.location)) pts.push(cg.location);
+  }
+  return pts;
+}
+
+/** Smallest distance (km) from a caregiver to the booking, per match mode. */
+export function caregiverDistanceKm(cg, booking, mode = 'gps') {
+  const pts = caregiverMatchPoints(cg, mode);
+  if (pts.length === 0) return Infinity;
+  return Math.min(...pts.map((p) => distanceKm(p, booking.location)));
+}
+
+export function eligibleCaregivers(booking, caregivers, radiusKm, mode = 'gps') {
   const limit = radiusKm || booking.radiusKm || Infinity;
   const canMeasure = hasCoords(booking.location);
   return (caregivers || [])
     .filter((cg) => cg.availability === 'available')
     .filter((cg) => Array.isArray(cg.specialities) && cg.specialities.includes(booking.speciality))
-    .map((cg) => ({ ...cg, distanceKm: distanceKm(cg.location, booking.location) }))
+    .map((cg) => ({ ...cg, distanceKm: caregiverDistanceKm(cg, booking, mode) }))
     .filter((cg) => {
-      // apply the radius test only when we actually know both positions
-      if (!canMeasure || !hasCoords(cg.location)) return true;
+      // apply the radius test only when we know the booking + at least one
+      // caregiver point (per mode); otherwise keep eligible (distance unknown).
+      const hasCgPoint = caregiverMatchPoints(cg, mode).length > 0;
+      if (!canMeasure || !hasCgPoint) return true;
       return cg.distanceKm <= limit;
     })
     .sort((a, b) => a.distanceKm - b.distanceKm);

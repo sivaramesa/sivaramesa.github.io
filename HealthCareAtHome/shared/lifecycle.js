@@ -52,9 +52,10 @@ export const Lifecycle = {
     return booking;
   },
 
-  /** req 3 — find eligible caregivers (speciality + within radius) and alert them. */
-  async broadcast(booking, allCaregivers, radiusKm) {
-    const targets = eligibleCaregivers(booking, allCaregivers, radiusKm);
+  /** req 3 — find eligible caregivers (speciality + within radius) and alert them.
+   *  mode = which caregiver location to match on ('gps' | 'registered' | 'both'). */
+  async broadcast(booking, allCaregivers, radiusKm, mode = 'gps') {
+    const targets = eligibleCaregivers(booking, allCaregivers, radiusKm, mode);
     advance(booking, BookingStatus.BROADCAST, {
       broadcast: { at: nowIso(), targetIds: targets.map((c) => c.id), radiusKm: radiusKm || booking.radiusKm }
     });

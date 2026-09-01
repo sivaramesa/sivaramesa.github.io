@@ -541,7 +541,7 @@ async function submitBooking(priority) {
     // unpaid record.
     await Lifecycle.pay(booking);                             // CREATED -> PAID (+write)
     Notify.toast('Payment received', 'Alerting nearby caregivers…', 'success');
-    const { notified } = await Lifecycle.broadcast(booking, state.caregivers, booking.radiusKm);
+    const { notified } = await Lifecycle.broadcast(booking, state.caregivers, booking.radiusKm, state.settings.matchLocationMode);
     state.activeBookingId = booking.id;
     Notify.toast(priority ? 'Priority request sent' : 'Request sent', `${notified.length} caregiver(s) alerted`, 'info');
   } catch (e) {
@@ -570,7 +570,7 @@ async function renderActive(b) {
   const showAvail = b.status === BookingStatus.BROADCAST;
   $('availabilityBox').classList.toggle('hidden', !showAvail);
   if (showAvail) {
-    const count = eligibleCaregivers(b, state.caregivers, b.radiusKm).length;
+    const count = eligibleCaregivers(b, state.caregivers, b.radiusKm, state.settings.matchLocationMode).length;
     $('availabilityLine').innerHTML = count > 0
       ? `<strong>${count}</strong> caregiver${count === 1 ? '' : 's'} available within ${b.radiusKm} km — waiting for one to accept…`
       : `No caregivers currently available within ${b.radiusKm} km. Waiting for someone to come online…`;

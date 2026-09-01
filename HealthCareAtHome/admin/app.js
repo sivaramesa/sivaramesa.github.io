@@ -17,7 +17,7 @@ import { Notify } from '../shared/notify.js';
 import { Settings } from '../shared/settings.js';
 import { registerWithUpdates } from '../shared/pwa-update.js';
 import { Services, createService, DEFAULT_COMMISSION_PCT, commissionFractionFor } from '../shared/services-master.js';
-import { distanceKm } from '../shared/geo.js';
+import { distanceKm, caregiverDistanceKm } from '../shared/geo.js';
 import { geocode } from '../shared/maps.js';
 
 const $ = (id) => document.getElementById(id);
@@ -78,6 +78,7 @@ function wireSettings() {
     $('leadHours').value = s.bookingLeadHours ?? 4;
     $('priorityMode').value = s.priorityMode || 'multiplier';
     $('priorityValue').value = s.priorityValue ?? 1.5;
+    if ($('matchLocationMode')) $('matchLocationMode').value = s.matchLocationMode || 'gps';
   });
 
   $('saveSettingsBtn').addEventListener('click', async () => {
@@ -98,11 +99,12 @@ function wireSettings() {
     const patch = {
       bookingLeadHours: Math.max(0, Number($('leadHours').value) || 0),
       priorityMode: $('priorityMode').value,
-      priorityValue: Math.max(0, Number($('priorityValue').value) || 0)
+      priorityValue: Math.max(0, Number($('priorityValue').value) || 0),
+      matchLocationMode: ($('matchLocationMode') && $('matchLocationMode').value) || 'gps'
     };
     try {
       await Settings.update(patch);
-      $('priorityStatus').textContent = `Saved · lead ${patch.bookingLeadHours}h · priority ${patch.priorityMode} ${patch.priorityValue}`;
+      $('priorityStatus').textContent = `Saved · lead ${patch.bookingLeadHours}h · priority ${patch.priorityMode} ${patch.priorityValue} · match ${patch.matchLocationMode}`;
       Notify.toast('Settings saved', 'Booking/priority updated', 'success');
     } catch (e) {
       $('priorityStatus').textContent = 'Save failed: ' + e.message;
@@ -429,10 +431,11 @@ function renderCaregivers() {
   if (f.spec) list = list.filter((c) => (c.specialities || []).includes(f.spec));
   if (f.sex) list = list.filter((c) => (c.sex || '') === f.sex);
 
-  // annotate distance from the chosen point (if set)
+  // annotate distance from the chosen point (if set), honoring the admin match mode
+  const matchMode = Settings.current().matchLocationMode || 'gps';
   const withDist = list.map((c) => ({
     cg: c,
-    dist: f.point ? distanceKm(c.location, f.point) : null
+    dist: f.point ? caregiverDistanceKm(c, { location: f.point }, matchMode) : null
   }));
   let filtered = withDist;
   if (f.point && f.km) {
