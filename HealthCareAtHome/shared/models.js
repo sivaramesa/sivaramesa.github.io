@@ -111,12 +111,14 @@ export function createCaregiver({ name, phone, specialities = [], lat = null, ln
 }
 
 /** Booking — the central record every app reads/writes. */
-export function createBooking({ clientId, speciality, location, price, radiusKm }) {
+export function createBooking({ clientId, speciality, location, price, radiusKm, serviceId = null, commissionPct = null }) {
   return {
     id: uid('bk'),
     clientId,
     caregiverId: null,
-    speciality,
+    speciality,                    // service key (matches caregiver specialities)
+    serviceId,                     // id of the master service, if chosen from it
+    commissionPct,                 // commission % snapshot at booking time (per-service)
     location,                      // { label, address, lat, lng }
     radiusKm: radiusKm || null,
     price,

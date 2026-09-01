@@ -16,9 +16,21 @@
 import { CONFIG } from './config.js';
 import { uid, nowIso } from './models.js';
 
-function commissionSplit(price) {
-  const commission = Math.round(price * CONFIG.rules.platformCommission * 100) / 100;
+/**
+ * Split a price into platform commission + caregiver amount.
+ * @param {number} price
+ * @param {number} [fraction] commission fraction (0..1). Defaults to the global
+ *   platform commission. Pass a per-service fraction to override.
+ */
+function commissionSplit(price, fraction = CONFIG.rules.platformCommission) {
+  const commission = Math.round(price * fraction * 100) / 100;
   return { commission, caregiverAmount: Math.round((price - commission) * 100) / 100 };
+}
+
+/** Resolve the commission fraction for a booking from its per-service snapshot. */
+function bookingFraction(booking) {
+  if (booking && typeof booking.commissionPct === 'number') return booking.commissionPct / 100;
+  return CONFIG.rules.platformCommission;
 }
 
 async function mockCharge(booking) {
@@ -28,7 +40,7 @@ async function mockCharge(booking) {
 
 async function mockPayout(booking) {
   await new Promise((r) => setTimeout(r, 400));
-  const { caregiverAmount } = commissionSplit(booking.price);
+  const { caregiverAmount } = commissionSplit(booking.price, bookingFraction(booking));
   return { id: uid('pay_out'), amount: caregiverAmount, status: 'transferred', at: nowIso() };
 }
 

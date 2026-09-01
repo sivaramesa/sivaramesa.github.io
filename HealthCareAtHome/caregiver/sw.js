@@ -1,5 +1,5 @@
 /* Service worker — HomeCare Caregiver PWA. See client/sw.js for strategy notes. */
-const CACHE = 'homecare-caregiver-v5';
+const CACHE = 'homecare-caregiver-v6';
 const SHELL = [
   './',
   './index.html',

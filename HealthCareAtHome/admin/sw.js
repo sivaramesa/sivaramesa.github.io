@@ -1,5 +1,5 @@
 /* Service worker — HomeCare Admin PWA. See client/sw.js for strategy notes. */
-const CACHE = 'homecare-admin-v5';
+const CACHE = 'homecare-admin-v6';
 const SHELL = [
   './',
   './index.html',
@@ -17,6 +17,7 @@ const SHELL = [
   '../shared/maps.js',
   '../shared/settings.js',
   '../shared/pwa-update.js',
+  '../shared/services-master.js',
   '../shared/geo.js',
   '../shared/codes.js',
   '../shared/auth.js',

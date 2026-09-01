@@ -16,10 +16,11 @@ import { Payments } from '../shared/payments.js';
 import { Notify } from '../shared/notify.js';
 import { Settings } from '../shared/settings.js';
 import { registerWithUpdates } from '../shared/pwa-update.js';
+import { Services, createService, DEFAULT_COMMISSION_PCT, commissionFractionFor } from '../shared/services-master.js';
 
 const $ = (id) => document.getElementById(id);
 
-const state = { clients: [], caregivers: [], bookings: [] };
+const state = { clients: [], caregivers: [], bookings: [], services: [] };
 
 function boot() {
   registerServiceWorker();
@@ -28,6 +29,7 @@ function boot() {
   wireTabs();
   populateSpecPicker();
   wireSettings();
+  wireServices();
 
   Sync.subscribe(COLLECTION.CLIENTS, (list) => { state.clients = list; renderClients(); renderDashboard(); });
   Sync.subscribe(COLLECTION.CAREGIVERS, (list) => { state.caregivers = list; renderCaregivers(); renderDashboard(); });
@@ -84,6 +86,72 @@ function wireSettings() {
       $('settingsStatus').textContent = 'Save failed: ' + e.message;
     }
   });
+}
+
+// ── services master ───────────────────────────────────────────────────────────
+async function wireServices() {
+  try { await Services.seedDefaults(); } catch (_) {/* offline; will seed later */}
+  Services.subscribe((list) => {
+    state.services = list.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    renderServices();
+  });
+
+  $('addServiceBtn').addEventListener('click', async () => {
+    const name = $('svcName').value.trim();
+    if (!name) return Notify.toast('Service', 'Name is required', 'error');
+    const svc = createService({
+      name,
+      cost: Number($('svcCost').value) || 0,
+      commissionPct: $('svcCommission').value === '' ? DEFAULT_COMMISSION_PCT : Number($('svcCommission').value)
+    });
+    await Services.save(svc);
+    $('svcName').value = ''; $('svcCost').value = ''; $('svcCommission').value = '';
+    Notify.toast('Service added', `${name} · ${svc.commissionPct}% commission`, 'success');
+  });
+}
+
+function renderServices() {
+  $('serviceRows').innerHTML = state.services.map((s) => `<tr>
+    <td><input data-f="name" data-id="${s.id}" value="${escapeAttr(s.name)}" style="min-width:140px" /></td>
+    <td class="codes">${s.key}</td>
+    <td><input data-f="cost" data-id="${s.id}" type="number" min="0" value="${s.cost}" style="width:90px" /></td>
+    <td><input data-f="commissionPct" data-id="${s.id}" type="number" min="0" max="100" value="${s.commissionPct}" style="width:80px" /></td>
+    <td><input data-f="active" data-id="${s.id}" type="checkbox" ${s.active ? 'checked' : ''} /></td>
+    <td>
+      <button class="btn small" data-save="${s.id}">Save</button>
+      <button class="btn danger small" data-del="${s.id}">Delete</button>
+    </td>
+  </tr>`).join('');
+
+  $('serviceRows').querySelectorAll('[data-save]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.save;
+      const svc = state.services.find((x) => x.id === id);
+      if (!svc) return;
+      const row = btn.closest('tr');
+      const get = (f) => row.querySelector(`[data-f="${f}"][data-id="${id}"]`);
+      svc.name = get('name').value.trim() || svc.name;
+      svc.cost = Number(get('cost').value) || 0;
+      svc.commissionPct = Number(get('commissionPct').value);
+      svc.active = get('active').checked;
+      await Services.save(svc);
+      Notify.toast('Service saved', `${svc.name} · ${svc.commissionPct}%`, 'success');
+    });
+  });
+
+  $('serviceRows').querySelectorAll('[data-del]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const svc = state.services.find((x) => x.id === btn.dataset.del);
+      if (!svc) return;
+      if (!confirm(`Delete service "${svc.name}"? Existing bookings keep their recorded values.`)) return;
+      await Services.remove(svc.id);
+      Notify.toast('Service deleted', svc.name, 'success');
+    });
+  });
+}
+
+function escapeAttr(s) {
+  return String(s || '').replace(/"/g, '&quot;');
 }
 
 // ── dashboard (req 5: all bookings + all secret codes) ───────────────────────
@@ -233,7 +301,7 @@ function renderPayments() {
   const rows = state.bookings
     .filter((b) => b.payment.status !== 'unpaid')
     .map((b) => {
-      const { caregiverAmount } = Payments.commissionSplit(b.price || 0);
+      const { caregiverAmount } = Payments.commissionSplit(b.price || 0, commissionFractionFor(b, state.services));
       const canRelease = b.status === BookingStatus.COMPLETED && b.payment.status === 'paid';
       const released = b.payment.status === 'released';
       const btn = released
@@ -282,7 +350,7 @@ function runReport() {
   const gross = done.reduce((s, b) => s + (b.price || 0), 0);
   let commission = 0, payout = 0, ratingSum = 0, ratingN = 0;
   done.forEach((b) => {
-    const split = Payments.commissionSplit(b.price || 0);
+    const split = Payments.commissionSplit(b.price || 0, commissionFractionFor(b, state.services));
     commission += split.commission; payout += split.caregiverAmount;
     if (b.feedback && b.feedback.stars) { ratingSum += b.feedback.stars; ratingN++; }
   });

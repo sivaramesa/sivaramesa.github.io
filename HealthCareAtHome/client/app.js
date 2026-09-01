@@ -19,6 +19,7 @@ import { CONFIG } from '../shared/config.js';
 import { Settings } from '../shared/settings.js';
 import { checkProximity, eligibleCaregivers } from '../shared/geo.js';
 import { registerWithUpdates } from '../shared/pwa-update.js';
+import { Services } from '../shared/services-master.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -31,7 +32,8 @@ const state = {
   stars: 0,
   unsubBookings: null,
   settings: { locationVerification: false, verifyRadiusMeters: 50 },
-  currentBooking: null
+  currentBooking: null,
+  services: []
 };
 
 // ── boot ──────────────────────────────────────────────────────────────────
@@ -51,6 +53,13 @@ async function boot() {
   Settings.subscribe((s) => {
     state.settings = s;
     if (state.currentBooking) renderActive(state.currentBooking);
+  });
+
+  // live services master; refresh the booking form's service dropdown
+  Services.subscribe((list) => {
+    state.services = (list || []).filter((s) => s.active)
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    populateSpecialities();
   });
 
   const sess = Auth.session();
@@ -126,9 +135,27 @@ function showBook() {
 
 function populateSpecialities() {
   const sel = $('speciality');
-  sel.innerHTML = Object.values(Speciality)
-    .map((s) => `<option value="${s}">${labelize(s)}</option>`).join('');
+  const prev = sel.value;
+  if (state.services.length) {
+    // driven by the admin Services master (active services only)
+    sel.innerHTML = state.services
+      .map((s) => `<option value="${s.key}">${s.name} — ₹${s.cost}</option>`).join('');
+  } else {
+    // fallback before the master loads / offline
+    sel.innerHTML = Object.values(Speciality)
+      .map((s) => `<option value="${s}">${labelize(s)}</option>`).join('');
+  }
+  if (prev) sel.value = prev;
+  prefillCostFromService();
 }
+
+/** Pre-fill the (editable) price field from the selected service's cost. */
+function prefillCostFromService() {
+  const svc = state.services.find((s) => s.key === $('speciality').value);
+  if (svc) $('price').value = svc.cost;
+}
+
+document.getElementById('speciality').addEventListener('change', prefillCostFromService);
 
 function populateSavedLocations() {
   const sel = $('savedLocation');
@@ -179,9 +206,12 @@ $('payBookBtn').addEventListener('click', async () => {
   }
   if (!location) return Notify.toast('Location', 'Choose or locate a service address', 'error');
 
+  const svc = state.services.find((s) => s.key === $('speciality').value);
   const booking = createBooking({
     clientId: state.client.id,
     speciality: $('speciality').value,
+    serviceId: svc ? svc.id : null,
+    commissionPct: svc ? svc.commissionPct : null, // snapshot commission at booking time
     location,
     price: Number($('price').value) || 0,
     radiusKm: Number($('radiusKm').value) || CONFIG.rules.defaultMatchRadiusKm
