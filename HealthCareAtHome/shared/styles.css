@@ -42,6 +42,12 @@ body {
   background: rgba(255,255,255,.25); border: 1px solid rgba(255,255,255,.5);
   flex: 0 0 auto;
 }
+.topbar .logoff-link {
+  color: #fff; font-size: 12px; font-weight: 600; text-decoration: none;
+  background: rgba(255,255,255,.2); padding: 4px 10px; border-radius: 999px;
+  margin-left: 8px; white-space: nowrap;
+}
+.topbar .logoff-link:hover { background: rgba(255,255,255,.32); }
 .topbar .role-tag {
   font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
   background: rgba(255,255,255,.2); padding: 3px 8px; border-radius: 999px;

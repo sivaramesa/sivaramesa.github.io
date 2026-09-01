@@ -325,7 +325,18 @@ function renderUserChip(user) {
   if (user.photo) { img.src = user.photo; img.style.display = ''; }
   else { img.removeAttribute('src'); img.style.display = 'none'; }
   chip.classList.remove('hidden');
+  const logoff = $('logoffLink');
+  if (logoff) logoff.classList.remove('hidden');
 }
+
+// Sign out: stop location sharing, clear the session, return to login.
+$('logoffLink')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (!confirm('Sign out of HomeCare?')) return;
+  try { stopSharing(); } catch (_) {}
+  try { Auth.signOut(); } catch (_) {}
+  location.reload();
+});
 
 function renderAvailability() {
   const a = state.cg.availability;

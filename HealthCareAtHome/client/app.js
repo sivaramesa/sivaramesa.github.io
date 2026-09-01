@@ -384,7 +384,17 @@ function renderUserChip(user) {
   if (user.photo) { img.src = user.photo; img.style.display = ''; }
   else { img.removeAttribute('src'); img.style.display = 'none'; }
   chip.classList.remove('hidden');
+  const logoff = $('logoffLink');
+  if (logoff) logoff.classList.remove('hidden');
 }
+
+// Sign out: clear the session and return to the login screen.
+$('logoffLink')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (!confirm('Sign out of HomeCare?')) return;
+  try { Auth.signOut(); } catch (_) {}
+  location.reload();
+});
 
 function showBook() {
   $('bookView').classList.remove('hidden');
