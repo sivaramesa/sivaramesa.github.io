@@ -14,7 +14,7 @@ import { Data, Sync } from '../shared/sync.js';
 import { Auth } from '../shared/auth.js';
 import { Lifecycle } from '../shared/lifecycle.js';
 import { Notify } from '../shared/notify.js';
-import { geocode, createLiveMap } from '../shared/maps.js';
+import { geocode, createLiveMap, currentPosition } from '../shared/maps.js';
 import { CONFIG } from '../shared/config.js';
 import { Settings, priorityPrice } from '../shared/settings.js';
 import { checkProximity, eligibleCaregivers, distanceMeters } from '../shared/geo.js';
@@ -32,6 +32,7 @@ const state = {
   caregivers: [],
   liveMap: null,
   pendingLocation: null,
+  overrideLocation: null,   // service location chosen via live GPS or a new address
   stars: 0,
   unsubBookings: null,
   settings: { locationVerification: false, verifyRadiusMeters: 50 },
@@ -339,6 +340,7 @@ function enterApp() {
   renderUserChip(state.client);
   populateSpecialities();
   populateRecipients();
+  wireLocationMode();
   defaultScheduledAt();
 
   if (state.unsubBookings) state.unsubBookings();
@@ -461,6 +463,56 @@ function populateRecipients() {
   recomputeBooking();
 }
 
+/** Wire the service-location chooser (recipient address / live GPS / new address). */
+function wireLocationMode() {
+  const mode = $('locMode');
+  if (!mode) return;
+  const sync = () => {
+    const v = mode.value;
+    $('liveLocRow').classList.toggle('hidden', v !== 'live');
+    $('newLocRow').classList.toggle('hidden', v !== 'new');
+    if (v === 'recipient') state.overrideLocation = null; // fall back to recipient address
+    recomputeBooking();
+  };
+  mode.addEventListener('change', sync);
+
+  guardedClick('useLiveLocBtn', async () => {
+    $('liveLocStatus').textContent = 'Getting your location…';
+    try {
+      const p = await currentPosition();
+      let label = `Current location (${p.lat.toFixed(4)}, ${p.lng.toFixed(4)})`;
+      // best-effort reverse label via geocode is not available; keep coords label
+      state.overrideLocation = { label: 'Current location', address: label, lat: p.lat, lng: p.lng };
+      $('liveLocStatus').textContent = 'Using your current location.';
+    } catch (e) {
+      state.overrideLocation = null;
+      $('liveLocStatus').textContent = 'Could not read location: ' + (e && e.message ? e.message : 'permission denied');
+    }
+    recomputeBooking();
+  });
+
+  guardedClick('newLocGeoBtn', async () => {
+    const addr = $('newLocAddr').value.trim();
+    if (!addr) { $('newLocStatus').textContent = 'Type an address first.'; return; }
+    $('newLocStatus').textContent = 'Locating…';
+    try {
+      const res = await geocode(addr);
+      if (res) {
+        state.overrideLocation = { label: 'Service address', address: res.address, lat: res.lat, lng: res.lng };
+        $('newLocStatus').textContent = `Located: ${res.address}`;
+      } else {
+        // no map pin, but still usable as a text address
+        state.overrideLocation = { label: 'Service address', address: addr, lat: null, lng: null };
+        $('newLocStatus').textContent = 'Saved address (no map pin — matching by distance limited).';
+      }
+    } catch (e) {
+      state.overrideLocation = { label: 'Service address', address: addr, lat: null, lng: null };
+      $('newLocStatus').textContent = 'Map unavailable; saved address text only.';
+    }
+    recomputeBooking();
+  });
+}
+
 /** Selected people objects, in list order. */
 function selectedPeople() {
   const people = bookingPeople();
@@ -468,8 +520,16 @@ function selectedPeople() {
   return people.filter((p) => chosen.includes(p.key));
 }
 
-/** Derive the single service location: self if selected, else first selected member. */
+/**
+ * Derive the single service location.
+ *   - locMode 'live' or 'new': use the explicitly chosen override location.
+ *   - locMode 'recipient' (default): self if selected, else first member.
+ */
 function deriveServiceLocation(sel) {
+  const mode = $('locMode') ? $('locMode').value : 'recipient';
+  if (mode === 'live' || mode === 'new') {
+    return state.overrideLocation || null;   // set by the live/geocode buttons
+  }
   if (sel.length === 0) return null;
   const self = sel.find((p) => p.key === 'self');
   return (self && self.location) ? self.location : sel[0].location;
@@ -492,17 +552,21 @@ function recomputeBooking() {
     ? `Service location: ${loc.address || loc.label}`
     : '';
 
-  // soft warning if selected people are at different locations
+  // soft warning if selected people are at different locations — only relevant
+  // when using recipient addresses (an explicit live/new location serves one place).
   const warnEl = $('recipientWarn');
-  const withCoords = sel.filter((p) => p.location && p.location.lat != null);
+  const locMode = $('locMode') ? $('locMode').value : 'recipient';
   let differ = false;
-  if (withCoords.length > 1) {
-    const base = withCoords[0].location;
-    differ = withCoords.some((p) => distanceMeters(base, p.location) > 200); // >200m apart
-  } else {
-    // no coords: compare address strings
-    const addrs = new Set(sel.map((p) => (p.location && p.location.address || '').trim()).filter(Boolean));
-    differ = addrs.size > 1;
+  if (locMode === 'recipient') {
+    const withCoords = sel.filter((p) => p.location && p.location.lat != null);
+    if (withCoords.length > 1) {
+      const base = withCoords[0].location;
+      differ = withCoords.some((p) => distanceMeters(base, p.location) > 200); // >200m apart
+    } else {
+      // no coords: compare address strings
+      const addrs = new Set(sel.map((p) => (p.location && p.location.address || '').trim()).filter(Boolean));
+      differ = addrs.size > 1;
+    }
   }
   warnEl.textContent = differ
     ? '⚠ Selected people are at different locations. The caregiver will be sent to one location only (see below).'
@@ -532,7 +596,13 @@ async function submitBooking(priority) {
   if (sel.length === 0) return Notify.toast('Recipients', 'Select at least one person', 'error');
 
   const location = deriveServiceLocation(sel);
-  if (!location) return Notify.toast('Location', 'The selected person has no address on file', 'error');
+  if (!location) {
+    const mode = $('locMode') ? $('locMode').value : 'recipient';
+    const msg = mode === 'live' ? 'Tap “Get my current location” first.'
+      : mode === 'new' ? 'Enter and locate the service address first.'
+      : 'The selected person has no address on file.';
+    return Notify.toast('Location needed', msg, 'error');
+  }
 
   const unit = svc ? svc.cost : 0;
   const base = unit * sel.length;

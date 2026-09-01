@@ -91,6 +91,22 @@
       <div id="recipientList"></div>
       <p id="recipientWarn" class="muted" style="color:var(--warn)"></p>
 
+      <label>Service location</label>
+      <select id="locMode">
+        <option value="recipient">Use recipient's saved address</option>
+        <option value="live">Use my current (live) location</option>
+        <option value="new">Enter a new address</option>
+      </select>
+      <div id="liveLocRow" class="hidden" style="margin-top:8px">
+        <button id="useLiveLocBtn" class="btn secondary small" style="width:auto">Get my current location</button>
+        <span id="liveLocStatus" class="muted" style="font-size:12px"></span>
+      </div>
+      <div id="newLocRow" class="hidden" style="margin-top:8px">
+        <input id="newLocAddr" placeholder="Type the service address" />
+        <button id="newLocGeoBtn" class="btn secondary small" style="width:auto;margin-top:6px">Locate address</button>
+        <span id="newLocStatus" class="muted" style="font-size:12px"></span>
+      </div>
+
       <label>Match radius (km)</label>
       <input id="radiusKm" type="number" min="1" value="15" />
 
