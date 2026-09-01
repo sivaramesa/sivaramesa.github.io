@@ -19,6 +19,7 @@ import { registerWithUpdates } from '../shared/pwa-update.js';
 import { Services, createService, DEFAULT_COMMISSION_PCT, commissionFractionFor } from '../shared/services-master.js';
 import { distanceKm, caregiverDistanceKm } from '../shared/geo.js';
 import { geocode } from '../shared/maps.js';
+import { guardedClick, guardOnce } from '../shared/dom.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -460,7 +461,7 @@ $('ebCancel').addEventListener('click', () => {
   _editingBookingId = null;
 });
 
-$('ebSave').addEventListener('click', async () => {
+guardedClick('ebSave', async () => {
   const b = state.bookings.find((x) => x.id === _editingBookingId);
   if (!b) return;
   const svc = state.services.find((s) => s.key === $('ebSpeciality').value);
@@ -821,7 +822,7 @@ function wireInviteModal() {
     });
   });
 
-  $('ivLink').addEventListener('click', async () => {
+  guardedClick('ivLink', async () => {
     const b = state.bookings.find((x) => x.id === inviteState.bookingId);
     if (!b) return;
     const ids = [...inviteState.selected];
@@ -884,9 +885,9 @@ function renderRegistrations() {
   }).join('');
 
   $('registrationList').querySelectorAll('[data-approve]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
+    guardOnce(btn, async () => {
       const c = state.caregivers.find((x) => x.id === btn.dataset.approve);
-      if (!c) return;
+      if (!c || c.status === CaregiverStatus.ACTIVE) return;
       c.status = CaregiverStatus.ACTIVE;
       // issue a login access code if none set yet
       if (!c.accessCode) c.accessCode = String(Math.floor(100000 + Math.random() * 900000));
@@ -897,9 +898,9 @@ function renderRegistrations() {
   });
 
   $('registrationList').querySelectorAll('[data-reject]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
+    guardOnce(btn, async () => {
       const c = state.caregivers.find((x) => x.id === btn.dataset.reject);
-      if (!c) return;
+      if (!c || c.status === CaregiverStatus.REJECTED) return;
       if (!confirm(`Reject ${c.name}'s registration?`)) return;
       c.status = CaregiverStatus.REJECTED;
       c.updatedAt = nowIso();
@@ -939,10 +940,18 @@ function renderPayments() {
   $('payRows').innerHTML = rows;
 
   $('payRows').querySelectorAll('[data-payout]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
+    guardOnce(btn, async () => {
       const b = await Data.get(COLLECTION.BOOKINGS, btn.dataset.payout);
-      await Lifecycle.releasePayout(b);
-      Notify.toast('Payout released', `Caregiver paid for booking ${b.id.slice(-6)}`, 'success');
+      if (!b) return;
+      if (b.payment && b.payment.status === 'released') {
+        return Notify.toast('Already released', `Payout for ${b.id.slice(-6)} was already released.`, 'info');
+      }
+      try {
+        await Lifecycle.releasePayout(b);
+        Notify.toast('Payout released', `Caregiver paid for booking ${b.id.slice(-6)}`, 'success');
+      } catch (e) {
+        Notify.toast('Payout failed', e.message, 'error');
+      }
     });
   });
 }

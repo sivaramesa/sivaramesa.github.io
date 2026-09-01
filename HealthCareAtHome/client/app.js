@@ -22,6 +22,7 @@ import { registerWithUpdates } from '../shared/pwa-update.js';
 import { Services } from '../shared/services-master.js';
 import { Aadhaar, isValidAadhaarFormat } from '../shared/aadhaar.js';
 import { compressPhoto } from '../shared/imaging.js';
+import { guardedClick } from '../shared/dom.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -516,10 +517,14 @@ function recomputeBooking() {
 }
 
 // ── book + pay ────────────────────────────────────────────────────────────────
-$('payBookBtn').addEventListener('click', () => submitBooking(false));
-$('priorityBookBtn').addEventListener('click', () => submitBooking(true));
+// Guarded so a double-tap can't create two bookings / charge twice. While one
+// submit runs, both buttons are disabled together.
+guardedClick('payBookBtn', () => submitBooking(false));
+guardedClick('priorityBookBtn', () => submitBooking(true));
 
+let _submittingBooking = false;
 async function submitBooking(priority) {
+  if (_submittingBooking) return;           // guard against a rapid second tap (either button)
   const btn = priority ? $('priorityBookBtn') : $('payBookBtn');
   const btnLabel = priority ? '⚡ Priority booking' : 'Pay & request caregiver';
   const svc = state.services.find((s) => s.key === $('speciality').value);
@@ -570,7 +575,11 @@ async function submitBooking(priority) {
     radiusKm: Number($('radiusKm').value) || CONFIG.rules.defaultMatchRadiusKm
   });
 
+  _submittingBooking = true;
   btn.disabled = true; btn.textContent = 'Processing…';
+  // also disable the sibling button so the other one can't fire mid-submit
+  const otherBtn = priority ? $('payBookBtn') : $('priorityBookBtn');
+  if (otherBtn) otherBtn.disabled = true;
   try {
     // Payment first: pay() captures payment AND writes the PAID booking. We do
     // NOT pre-write the unpaid booking, so a failed payment leaves no orphaned
@@ -583,7 +592,9 @@ async function submitBooking(priority) {
   } catch (e) {
     Notify.toast('Booking failed', e.message || 'Payment could not be completed.', 'error');
   } finally {
+    _submittingBooking = false;
     btn.disabled = false; btn.textContent = btnLabel;
+    if (otherBtn) otherBtn.disabled = false;
   }
 }
 
@@ -727,8 +738,15 @@ function applyStartProximityGate(b) {
 }
 
 // ── req 7: verify start code ──────────────────────────────────────────────────
-$('verifyStartBtn').addEventListener('click', async () => {
+guardedClick('verifyStartBtn', async () => {
   const b = await Data.get(COLLECTION.BOOKINGS, state.activeBookingId);
+  if (!b) return;
+  if (b.status === BookingStatus.IN_SERVICE || b.codes?.startVerified) {
+    return Notify.toast('Already started', 'The service has already started.', 'info');
+  }
+  if (b.status !== BookingStatus.ARRIVED) {
+    return Notify.toast('Not ready', 'The start code can be verified once the caregiver has arrived.', 'error');
+  }
   // re-check the gate at click time (defence in depth)
   if (state.settings.locationVerification) {
     const caregiverLoc = b.tracking && b.tracking.lat != null
@@ -738,9 +756,13 @@ $('verifyStartBtn').addEventListener('click', async () => {
       return Notify.toast('Location check', 'Caregiver is not within range yet.', 'error');
     }
   }
-  const { ok } = await Lifecycle.verifyStartCode(b, $('startCodeInput').value);
-  Notify.toast(ok ? 'Verified' : 'Wrong code',
-    ok ? 'Service started.' : 'Code did not match. Try again.', ok ? 'success' : 'error');
+  try {
+    const { ok } = await Lifecycle.verifyStartCode(b, $('startCodeInput').value);
+    Notify.toast(ok ? 'Verified' : 'Wrong code',
+      ok ? 'Service started.' : 'Code did not match. Try again.', ok ? 'success' : 'error');
+  } catch (e) {
+    Notify.toast('Could not start', e.message, 'error');
+  }
 });
 
 // ── cancel booking (client — only before a caregiver accepts) ─────────────────
@@ -815,17 +837,28 @@ $('starRow').addEventListener('click', (e) => {
 });
 
 // ── req 9: verify completion code + rating ───────────────────────────────────
-$('verifyCompleteBtn').addEventListener('click', async () => {
+guardedClick('verifyCompleteBtn', async () => {
   const b = await Data.get(COLLECTION.BOOKINGS, state.activeBookingId);
+  if (!b) return;
+  if (b.status === BookingStatus.COMPLETED) {
+    return Notify.toast('Already completed', 'This service is already marked complete.', 'info');
+  }
+  if (b.status !== BookingStatus.COMPLETION_PENDING) {
+    return Notify.toast('Not ready', 'Completion can only be confirmed once the caregiver requests it.', 'error');
+  }
   const cg = state.caregivers.find((c) => c.id === b.caregiverId);
-  const { ok } = await Lifecycle.verifyCompletion(
-    b, $('completeCodeInput').value,
-    { stars: state.stars, comments: $('commentInput').value.trim() },
-    cg
-  );
-  Notify.toast(ok ? 'Completed' : 'Wrong code',
-    ok ? 'Service officially completed. Thank you!' : 'Completion code did not match.',
-    ok ? 'success' : 'error');
+  try {
+    const { ok } = await Lifecycle.verifyCompletion(
+      b, $('completeCodeInput').value,
+      { stars: state.stars, comments: $('commentInput').value.trim() },
+      cg
+    );
+    Notify.toast(ok ? 'Completed' : 'Wrong code',
+      ok ? 'Service officially completed. Thank you!' : 'Completion code did not match.',
+      ok ? 'success' : 'error');
+  } catch (e) {
+    Notify.toast('Could not complete', e.message, 'error');
+  }
 });
 
 $('newBookingBtn').addEventListener('click', () => {

@@ -19,6 +19,7 @@ import { Settings } from '../shared/settings.js';
 import { registerWithUpdates } from '../shared/pwa-update.js';
 import { Aadhaar, isValidAadhaarFormat } from '../shared/aadhaar.js';
 import { compressPhoto, compressCertificate } from '../shared/imaging.js';
+import { guardedClick, guardOnce } from '../shared/dom.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -49,25 +50,6 @@ function renderSyncDot(status) {
   const dot = $('syncDot');
   dot.className = 'status-dot ' + (!status.online ? 'red' : status.pending ? 'amber' : 'green');
   dot.title = !status.online ? 'offline' : status.pending ? `${status.pending} pending` : 'synced';
-}
-
-/**
- * Wire a click handler that cannot double-fire: while the async handler runs,
- * the button is disabled (and re-entry is ignored), then re-enabled. Prevents
- * a second tap from firing a duplicate/illegal state transition.
- */
-function guardedClick(id, handler) {
-  const btn = $(id);
-  if (!btn) return;
-  let busy = false;
-  btn.addEventListener('click', async () => {
-    if (busy) return;
-    busy = true;
-    btn.disabled = true;
-    btn.classList.add('is-busy');
-    try { await handler(); }
-    finally { busy = false; btn.disabled = false; btn.classList.remove('is-busy'); }
-  });
 }
 
 // ── login ─────────────────────────────────────────────────────────────────────
@@ -404,7 +386,7 @@ function renderQueue() {
   }).join('');
 
   list.querySelectorAll('[data-accept]').forEach((btn) => {
-    btn.addEventListener('click', () => acceptJob(btn.dataset.accept));
+    guardOnce(btn, () => acceptJob(btn.dataset.accept));
   });
 }
 

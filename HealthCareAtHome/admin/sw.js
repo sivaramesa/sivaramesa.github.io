@@ -1,5 +1,5 @@
 /* Service worker — HomeCare Admin PWA. See client/sw.js for strategy notes. */
-const CACHE = 'homecare-admin-v27';
+const CACHE = 'homecare-admin-v28';
 const SHELL = [
   './',
   './index.html',
@@ -21,6 +21,7 @@ const SHELL = [
   '../shared/geo.js',
   '../shared/codes.js',
   '../shared/auth.js',
+  '../shared/dom.js',
   '../shared/icons/icon-192.png',
   '../shared/icons/icon-512.png'
 ];
