@@ -24,7 +24,7 @@ const $ = (id) => document.getElementById(id);
 
 const state = { clients: [], caregivers: [], bookings: [], services: [] };
 const cgFilter = { name: '', spec: '', sex: '', km: null, point: null }; // point: {lat,lng}
-const dashFilter = { includeCompleted: false };
+const dashFilter = { includeCompleted: false, atRiskOnly: false };
 // per-booking caregiver search (local overrides; never touches app-wide Settings)
 const inviteState = { bookingId: null, radiusKm: null, mode: 'gps', name: '', sex: '', includeOffline: false, selected: new Set() };
 
@@ -205,12 +205,15 @@ function escapeAttr(s) {
 // ── dashboard (req 5: all bookings + all secret codes) ───────────────────────
 function wireDashboardFilters() {
   const cb = $('includeCompleted');
-  if (!cb) return;
-  cb.checked = dashFilter.includeCompleted;
-  cb.addEventListener('change', () => {
-    dashFilter.includeCompleted = cb.checked;
-    renderDashboard();
-  });
+  if (cb) {
+    cb.checked = dashFilter.includeCompleted;
+    cb.addEventListener('change', () => { dashFilter.includeCompleted = cb.checked; renderDashboard(); });
+  }
+  const risk = $('atRiskOnly');
+  if (risk) {
+    risk.checked = dashFilter.atRiskOnly;
+    risk.addEventListener('change', () => { dashFilter.atRiskOnly = risk.checked; renderDashboard(); });
+  }
 }
 
 // Statuses meaning "a caregiver has committed but service has not started yet".
@@ -242,9 +245,18 @@ function renderDashboard() {
   $('mDone').textContent = done.length;
   $('mRevenue').textContent = revenue.toFixed(0);
 
-  const rows = dashFilter.includeCompleted
+  // count of at-risk bookings (accepted, not started, within/over the window)
+  const atRiskTotal = state.bookings.filter((b) => startRiskInfo(b).atRisk).length;
+  const riskBadge = $('atRiskCount');
+  if (riskBadge) {
+    riskBadge.textContent = `⏰ ${atRiskTotal} at risk`;
+    riskBadge.classList.toggle('hidden', atRiskTotal === 0);
+  }
+
+  let rows = dashFilter.includeCompleted
     ? state.bookings
     : state.bookings.filter((b) => b.status !== BookingStatus.COMPLETED);
+  if (dashFilter.atRiskOnly) rows = rows.filter((b) => startRiskInfo(b).atRisk);
 
   $('bookingRows').innerHTML = rows.map((b) => {
     const client = state.clients.find((c) => c.id === b.clientId);

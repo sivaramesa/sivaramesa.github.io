@@ -122,9 +122,15 @@
       <div class="card">
         <div class="row" style="justify-content:space-between;align-items:center">
           <h2 style="margin:0">All bookings (with secret codes)</h2>
-          <label style="margin:0;display:flex;align-items:center;gap:6px;font-weight:normal">
-            <input type="checkbox" id="includeCompleted" /> Include completed records
-          </label>
+          <div class="row" style="gap:14px;align-items:center;width:auto">
+            <span id="atRiskCount" class="badge cancelled hidden"></span>
+            <label style="margin:0;display:flex;align-items:center;gap:6px;font-weight:normal">
+              <input type="checkbox" id="atRiskOnly" /> At-risk only
+            </label>
+            <label style="margin:0;display:flex;align-items:center;gap:6px;font-weight:normal">
+              <input type="checkbox" id="includeCompleted" /> Include completed records
+            </label>
+          </div>
         </div>
         <div class="scroll">
           <table>
