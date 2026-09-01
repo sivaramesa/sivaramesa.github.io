@@ -18,8 +18,26 @@ const SETTINGS_DOC = ['settings', 'app'];
 
 export const DEFAULT_SETTINGS = Object.freeze({
   locationVerification: false,
-  verifyRadiusMeters: 50
+  verifyRadiusMeters: 50,
+  // Priority booking
+  bookingLeadHours: 4,          // minimum lead time for a normal booking
+  priorityMode: 'multiplier',   // 'multiplier' | 'percent' | 'flat'
+  priorityValue: 1.5            // multiplier: ×1.5 | percent: +50% | flat: +₹/recipient
 });
+
+/**
+ * Compute the priority price for a base amount.
+ * @param {number} base      the normal total (unit × recipients)
+ * @param {number} recipients recipient count (for flat surcharge per person)
+ * @param {object} s         settings
+ */
+export function priorityPrice(base, recipients, s) {
+  const mode = (s && s.priorityMode) || 'multiplier';
+  const val = Number((s && s.priorityValue) ?? 1.5);
+  if (mode === 'flat') return Math.round(base + val * Math.max(1, recipients));
+  if (mode === 'percent') return Math.round(base * (1 + val / 100));
+  return Math.round(base * (val || 1)); // multiplier
+}
 
 function withDefaults(data) {
   return { ...DEFAULT_SETTINGS, ...(data || {}) };

@@ -16,7 +16,7 @@ import { Lifecycle } from '../shared/lifecycle.js';
 import { Notify } from '../shared/notify.js';
 import { geocode, createLiveMap } from '../shared/maps.js';
 import { CONFIG } from '../shared/config.js';
-import { Settings } from '../shared/settings.js';
+import { Settings, priorityPrice } from '../shared/settings.js';
 import { checkProximity, eligibleCaregivers, distanceMeters } from '../shared/geo.js';
 import { registerWithUpdates } from '../shared/pwa-update.js';
 import { Services } from '../shared/services-master.js';
@@ -470,11 +470,22 @@ function recomputeBooking() {
   warnEl.textContent = differ
     ? '⚠ Selected people are at different locations. The caregiver will be sent to one location only (see below).'
     : '';
+
+  // priority cost note
+  const pTotal = priorityPrice(total, sel.length, state.settings);
+  const extra = pTotal - total;
+  $('priorityNote').textContent = sel.length && extra > 0
+    ? `⚡ Priority booking costs ₹${pTotal} (₹${extra} more) for faster service.`
+    : '';
 }
 
 // ── book + pay ────────────────────────────────────────────────────────────────
-$('payBookBtn').addEventListener('click', async () => {
-  const btn = $('payBookBtn');
+$('payBookBtn').addEventListener('click', () => submitBooking(false));
+$('priorityBookBtn').addEventListener('click', () => submitBooking(true));
+
+async function submitBooking(priority) {
+  const btn = priority ? $('priorityBookBtn') : $('payBookBtn');
+  const btnLabel = priority ? '⚡ Priority booking' : 'Pay & request caregiver';
   const svc = state.services.find((s) => s.key === $('speciality').value);
   const sel = selectedPeople();
   if (sel.length === 0) return Notify.toast('Recipients', 'Select at least one person', 'error');
@@ -483,36 +494,54 @@ $('payBookBtn').addEventListener('click', async () => {
   if (!location) return Notify.toast('Location', 'The selected person has no address on file', 'error');
 
   const unit = svc ? svc.cost : 0;
+  const base = unit * sel.length;
   const scheduledVal = $('scheduledAt').value;
   const scheduledAt = scheduledVal ? new Date(scheduledVal).toISOString() : nowIso();
+
+  // Normal booking must respect the admin lead time; sub-lead-time -> Priority.
+  const leadHours = state.settings.bookingLeadHours ?? 4;
+  const minTime = Date.now() + leadHours * 3600 * 1000;
+  if (!priority && new Date(scheduledAt).getTime() < minTime) {
+    return Notify.toast('Too soon',
+      `Normal bookings need at least ${leadHours}h lead time. Use ⚡ Priority booking for sooner service.`,
+      'error');
+  }
+
+  const price = priority ? priorityPrice(base, sel.length, state.settings) : base;
+
+  if (priority) {
+    const extra = price - base;
+    if (!confirm(`Priority booking total: ₹${price}${extra > 0 ? ` (₹${extra} more than the normal ₹${base})` : ''}.\n\nProceed?`)) return;
+  }
 
   const booking = createBooking({
     clientId: state.client.id,
     speciality: $('speciality').value,
     serviceId: svc ? svc.id : null,
-    commissionPct: svc ? svc.commissionPct : null, // snapshot commission at booking time
+    commissionPct: svc ? svc.commissionPct : null,
     scheduledAt,
     recipients: sel.map((p) => ({ name: p.label, address: (p.location || {}).address || '', lat: (p.location || {}).lat ?? null, lng: (p.location || {}).lng ?? null })),
     unitPrice: unit,
+    priority,
     location,
-    price: unit * sel.length,
+    price,
     radiusKm: Number($('radiusKm').value) || CONFIG.rules.defaultMatchRadiusKm
   });
 
-  btn.disabled = true; btn.textContent = 'Processing payment…';
+  btn.disabled = true; btn.textContent = 'Processing…';
   try {
-    await Data.write(COLLECTION.BOOKINGS, booking);          // persist created
-    await Lifecycle.pay(booking);                            // req 3: capture payment
+    await Data.write(COLLECTION.BOOKINGS, booking);
+    await Lifecycle.pay(booking);
     Notify.toast('Payment received', 'Alerting nearby caregivers…', 'success');
-    const { notified } = await Lifecycle.broadcast(booking, state.caregivers, booking.radiusKm); // req 3
+    const { notified } = await Lifecycle.broadcast(booking, state.caregivers, booking.radiusKm);
     state.activeBookingId = booking.id;
-    Notify.toast('Request sent', `${notified.length} caregiver(s) alerted`, 'info');
+    Notify.toast(priority ? 'Priority request sent' : 'Request sent', `${notified.length} caregiver(s) alerted`, 'info');
   } catch (e) {
     Notify.toast('Booking failed', e.message, 'error');
   } finally {
-    btn.disabled = false; btn.textContent = 'Pay & request caregiver';
+    btn.disabled = false; btn.textContent = btnLabel;
   }
-});
+}
 
 // ── render active booking (drives every downstream stage) ────────────────────
 async function renderActive(b) {
@@ -525,7 +554,7 @@ async function renderActive(b) {
   const when = b.scheduledAt ? new Date(b.scheduledAt).toLocaleString() : '';
   const forWhom = (b.recipients || []).map((r) => r.name).join(', ');
   $('activeSummary').innerHTML =
-    `${labelize(b.speciality)} · ${b.location.address || b.location.label} · ₹${b.price}`
+    `${b.priority ? '<span class="badge broadcast">⚡ Priority</span> ' : ''}${labelize(b.speciality)} · ${b.location.address || b.location.label} · ₹${b.price}`
     + (when ? `<br><span class="muted">Scheduled: ${when}</span>` : '')
     + (forWhom ? `<br><span class="muted">For: ${forWhom}</span>` : '');
 

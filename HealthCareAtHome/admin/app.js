@@ -75,6 +75,9 @@ function wireSettings() {
   Settings.subscribe((s) => {
     $('locVerifyToggle').checked = !!s.locationVerification;
     $('verifyRadius').value = s.verifyRadiusMeters;
+    $('leadHours').value = s.bookingLeadHours ?? 4;
+    $('priorityMode').value = s.priorityMode || 'multiplier';
+    $('priorityValue').value = s.priorityValue ?? 1.5;
   });
 
   $('saveSettingsBtn').addEventListener('click', async () => {
@@ -88,6 +91,21 @@ function wireSettings() {
       Notify.toast('Settings saved', 'Location verification updated', 'success');
     } catch (e) {
       $('settingsStatus').textContent = 'Save failed: ' + e.message;
+    }
+  });
+
+  $('savePriorityBtn').addEventListener('click', async () => {
+    const patch = {
+      bookingLeadHours: Math.max(0, Number($('leadHours').value) || 0),
+      priorityMode: $('priorityMode').value,
+      priorityValue: Math.max(0, Number($('priorityValue').value) || 0)
+    };
+    try {
+      await Settings.update(patch);
+      $('priorityStatus').textContent = `Saved · lead ${patch.bookingLeadHours}h · priority ${patch.priorityMode} ${patch.priorityValue}`;
+      Notify.toast('Settings saved', 'Booking/priority updated', 'success');
+    } catch (e) {
+      $('priorityStatus').textContent = 'Save failed: ' + e.message;
     }
   });
 }
@@ -173,7 +191,12 @@ function renderDashboard() {
     const client = state.clients.find((c) => c.id === b.clientId);
     const cg = state.caregivers.find((c) => c.id === b.caregiverId);
     const recips = (b.recipients || []).map((r) => r.name).join(', ') || '—';
-    return `<tr>
+    const typeCell = b.priority
+      ? '<span class="badge broadcast">⚡ Priority</span>'
+      : '<span class="badge">Normal</span>';
+    const rowStyle = b.priority ? ' style="background:#fff4e5"' : '';
+    return `<tr${rowStyle}>
+      <td>${typeCell}</td>
       <td>${fmtDateTime(b.createdAt)}</td>
       <td>${b.scheduledAt ? fmtDateTime(b.scheduledAt) : '—'}</td>
       <td>${client ? client.name : b.clientId}</td>

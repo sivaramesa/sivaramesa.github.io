@@ -327,9 +327,9 @@ function renderQueue() {
     const distTxt = dist != null && isFinite(dist) ? `${dist.toFixed(1)} km away` : 'distance n/a';
     const when = b.scheduledAt ? new Date(b.scheduledAt).toLocaleString() : '';
     const forCount = (b.recipients || []).length;
-    return `<div class="card" style="background:#f8fafc">
+    return `<div class="card" style="background:${b.priority ? '#fff4e5' : '#f8fafc'}">
       <div style="display:flex;justify-content:space-between">
-        <strong>${labelize(b.speciality)}</strong><span>₹${b.price}</span>
+        <strong>${b.priority ? '⚡ ' : ''}${labelize(b.speciality)}</strong><span>₹${b.price}</span>
       </div>
       <div class="muted">${b.location.address || b.location.label} · ${distTxt}</div>
       ${when ? `<div class="muted">When: ${when}</div>` : ''}

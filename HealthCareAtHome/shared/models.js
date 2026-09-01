@@ -175,7 +175,8 @@ export function createBooking({
   serviceId = null, commissionPct = null,
   scheduledAt = null,   // ISO datetime the service is needed (default set by caller)
   recipients = [],      // [{ name, label, address, lat, lng }] — who the service is for
-  unitPrice = null      // per-recipient service cost (price = unitPrice * recipients)
+  unitPrice = null,     // per-recipient service cost (base price = unitPrice * recipients)
+  priority = false      // priority booking (expedited; different rate + admin workflow)
 }) {
   return {
     id: uid('bk'),
@@ -187,6 +188,7 @@ export function createBooking({
     scheduledAt: scheduledAt || nowIso(),
     recipients,                    // people this service is for
     unitPrice,                     // per-recipient cost
+    priority,                      // expedited booking
     location,                      // { label, address, lat, lng }
     radiusKm: radiusKm || null,
     price,

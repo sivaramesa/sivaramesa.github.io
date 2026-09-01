@@ -99,8 +99,12 @@
       </div>
 
       <div style="height:12px"></div>
-      <button id="payBookBtn" class="btn">Pay &amp; request caregiver</button>
-      <p class="muted center" style="margin-top:8px">Payment is captured first, then nearby caregivers are alerted.</p>
+      <div class="row">
+        <button id="payBookBtn" class="btn">Pay &amp; request caregiver</button>
+        <button id="priorityBookBtn" class="btn" style="background:var(--warn)">⚡ Priority booking</button>
+      </div>
+      <p id="priorityNote" class="muted center" style="margin-top:8px"></p>
+      <p class="muted center" style="margin-top:4px">Payment is captured first, then nearby caregivers are alerted.</p>
     </section>
 
     <!-- Active booking -->
