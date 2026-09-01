@@ -1,5 +1,5 @@
 /* Service worker — HomeCare Caregiver PWA. See client/sw.js for strategy notes. */
-const CACHE = 'homecare-caregiver-v7';
+const CACHE = 'homecare-caregiver-v8';
 const SHELL = [
   './',
   './index.html',
@@ -17,6 +17,8 @@ const SHELL = [
   '../shared/maps.js',
   '../shared/settings.js',
   '../shared/pwa-update.js',
+  '../shared/aadhaar.js',
+  '../shared/imaging.js',
   '../shared/geo.js',
   '../shared/codes.js',
   '../shared/auth.js',

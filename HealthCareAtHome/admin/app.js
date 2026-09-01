@@ -6,7 +6,7 @@
  * reports. Admin also provisions users with their login access codes.
  */
 import {
-  Speciality, BookingStatus, Availability,
+  Speciality, BookingStatus, Availability, CaregiverStatus,
   createClient, createCaregiver, nowIso
 } from '../shared/models.js';
 import { COLLECTION } from '../shared/firebase.js';
@@ -32,7 +32,7 @@ function boot() {
   wireServices();
 
   Sync.subscribe(COLLECTION.CLIENTS, (list) => { state.clients = list; renderClients(); renderDashboard(); });
-  Sync.subscribe(COLLECTION.CAREGIVERS, (list) => { state.caregivers = list; renderCaregivers(); renderDashboard(); });
+  Sync.subscribe(COLLECTION.CAREGIVERS, (list) => { state.caregivers = list; renderCaregivers(); renderRegistrations(); renderDashboard(); });
   Sync.subscribe(COLLECTION.BOOKINGS, (list) => {
     state.bookings = list.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     renderDashboard(); renderPayments();
@@ -276,7 +276,9 @@ function resizeImageToDataUrl(file, maxSize, quality) {
 }
 
 function renderCaregivers() {
-  $('cgRows').innerHTML = state.caregivers.map((c) => `<tr>
+  // main table shows active/approved caregivers (registrations live on their own tab)
+  const active = state.caregivers.filter((c) => (c.status || CaregiverStatus.ACTIVE) !== CaregiverStatus.REGISTERED);
+  $('cgRows').innerHTML = active.map((c) => `<tr>
     <td>${c.name}</td><td>${c.phone}</td>
     <td>${(c.specialities || []).map(labelize).join(', ')}</td>
     <td><span class="badge ${c.availability === Availability.AVAILABLE ? 'in_service' : c.availability === Availability.ON_SERVICE ? 'accepted' : 'cancelled'}">${labelize(c.availability)}</span></td>
@@ -294,6 +296,75 @@ function renderCaregivers() {
       Notify.toast('Caregiver deleted', c.name, 'success');
     });
   });
+}
+
+// ── caregiver registrations (approve / reject) ───────────────────────────────
+function renderRegistrations() {
+  const pending = state.caregivers.filter((c) => c.status === CaregiverStatus.REGISTERED);
+  $('registrationEmpty').classList.toggle('hidden', pending.length > 0);
+
+  $('registrationList').innerHTML = pending.map((c) => {
+    const photo = c.photo
+      ? `<img src="${c.photo}" alt="" style="width:64px;height:64px;border-radius:8px;object-fit:cover" />`
+      : '<div style="width:64px;height:64px;border-radius:8px;background:#e5e7eb"></div>';
+    const certs = (c.certificates || []).length
+      ? (c.certificates || []).map((ct, i) =>
+          `<a href="${ct.dataUrl}" target="_blank" rel="noopener" class="badge" style="margin:2px">📄 ${ct.name || ('Certificate ' + (i + 1))}</a>`).join(' ')
+      : '<span class="muted">No certificates attached</span>';
+    const addr = c.address ? `${c.address.address || '—'}${c.address.lat != null ? ` (${c.address.lat.toFixed(4)}, ${c.address.lng.toFixed(4)})` : ' — no map pin'}` : '—';
+    const op = c.operatingLocation ? `${c.operatingLocation.address || '—'}${c.operatingLocation.lat != null ? ` (${c.operatingLocation.lat.toFixed(4)}, ${c.operatingLocation.lng.toFixed(4)})` : ' — no map pin'}` : '—';
+    const aadhaar = c.aadhaar ? `${maskAadhaar(c.aadhaar.number)} ${c.aadhaar.verified ? '✓ verified' : '(unverified)'}` : '—';
+    return `<div class="card" style="background:#f8fafc">
+      <div style="display:flex;gap:12px">
+        ${photo}
+        <div style="flex:1">
+          <strong>${c.name}</strong> <span class="muted">· DOB ${c.dob || '—'}</span>
+          <div class="muted">${c.phone}</div>
+          <div class="muted">${(c.specialities || []).map(labelize).join(', ')}</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;font-size:13px">
+        <div><b>Aadhaar:</b> ${aadhaar}</div>
+        <div><b>Address:</b> ${addr}</div>
+        <div><b>Operating:</b> ${op}</div>
+        <div style="margin-top:4px"><b>Certificates:</b> ${certs}</div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn ok small" data-approve="${c.id}">Approve → Active</button>
+        <button class="btn danger small" data-reject="${c.id}">Reject</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  $('registrationList').querySelectorAll('[data-approve]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const c = state.caregivers.find((x) => x.id === btn.dataset.approve);
+      if (!c) return;
+      c.status = CaregiverStatus.ACTIVE;
+      // issue a login access code if none set yet
+      if (!c.accessCode) c.accessCode = String(Math.floor(100000 + Math.random() * 900000));
+      c.updatedAt = nowIso();
+      await Data.write(COLLECTION.CAREGIVERS, c);
+      Notify.toast('Approved', `${c.name} is now active · access code ${c.accessCode}`, 'success');
+    });
+  });
+
+  $('registrationList').querySelectorAll('[data-reject]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const c = state.caregivers.find((x) => x.id === btn.dataset.reject);
+      if (!c) return;
+      if (!confirm(`Reject ${c.name}'s registration?`)) return;
+      c.status = CaregiverStatus.REJECTED;
+      c.updatedAt = nowIso();
+      await Data.write(COLLECTION.CAREGIVERS, c);
+      Notify.toast('Rejected', c.name, 'info');
+    });
+  });
+}
+
+function maskAadhaar(num) {
+  const s = String(num || '').replace(/\s/g, '');
+  return s.length === 12 ? `XXXX XXXX ${s.slice(-4)}` : (s || '—');
 }
 
 // ── payments (admin receives + releases payout) ──────────────────────────────

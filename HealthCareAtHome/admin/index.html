@@ -30,12 +30,23 @@
   <main class="container">
     <div class="tabs">
       <button data-tab="dashboard" class="active">Dashboard</button>
+      <button data-tab="registrations">Registrations</button>
       <button data-tab="services">Services</button>
       <button data-tab="clients">Clients</button>
       <button data-tab="caregivers">Caregivers</button>
       <button data-tab="payments">Payments</button>
       <button data-tab="reports">Reports</button>
     </div>
+
+    <!-- Caregiver registrations awaiting approval -->
+    <section id="tab-registrations" class="tabpane hidden">
+      <div class="card">
+        <h2>Pending caregiver registrations</h2>
+        <p class="muted">Verify certificates and location, then approve to activate the caregiver, or reject.</p>
+        <div id="registrationList"></div>
+        <p id="registrationEmpty" class="muted">No pending registrations.</p>
+      </div>
+    </section>
 
     <!-- Services master -->
     <section id="tab-services" class="tabpane hidden">

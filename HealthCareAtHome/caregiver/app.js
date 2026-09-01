@@ -6,17 +6,19 @@
  *   share live location -> mark arrival -> request completion (completion code
  *   issued to the client).
  */
-import { Availability, BookingStatus, nowIso } from '../shared/models.js';
+import { Availability, BookingStatus, CaregiverStatus, Speciality, nowIso, createCaregiver } from '../shared/models.js';
 import { COLLECTION } from '../shared/firebase.js';
 import { Data, Sync } from '../shared/sync.js';
 import { Auth } from '../shared/auth.js';
 import { Lifecycle } from '../shared/lifecycle.js';
 import { Notify } from '../shared/notify.js';
 import { eligibleCaregivers, distanceKm, checkProximity } from '../shared/geo.js';
-import { currentPosition, watchPosition } from '../shared/maps.js';
+import { currentPosition, watchPosition, geocode } from '../shared/maps.js';
 import { CONFIG } from '../shared/config.js';
 import { Settings } from '../shared/settings.js';
 import { registerWithUpdates } from '../shared/pwa-update.js';
+import { Aadhaar, isValidAadhaarFormat } from '../shared/aadhaar.js';
+import { compressPhoto, compressCertificate } from '../shared/imaging.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -57,7 +59,16 @@ $('loginBtn').addEventListener('click', async () => {
 
   const all = await Data.getAll(COLLECTION.CAREGIVERS);
   const rec = all.find((c) => (c.phone || '').replace(/\s/g, '') === phone.replace(/\s/g, ''));
-  if (!rec) return Notify.toast('Not found', 'No caregiver with that number. Contact admin.', 'error');
+  if (!rec) return Notify.toast('Not found', 'No caregiver with that number. Register first.', 'error');
+
+  // Registration gate: only ACTIVE (admin-approved) caregivers may log in.
+  const status = rec.status || CaregiverStatus.ACTIVE; // legacy records w/o status = active
+  if (status === CaregiverStatus.REGISTERED) {
+    return Notify.toast('Awaiting approval', 'Your registration is under review by the admin.', 'error');
+  }
+  if (status === CaregiverStatus.REJECTED) {
+    return Notify.toast('Registration rejected', 'Your registration was not approved. Contact admin.', 'error');
+  }
 
   try {
     await Auth.signInWithSecretCode(rec, code);
@@ -69,6 +80,175 @@ $('loginBtn').addEventListener('click', async () => {
     enterApp();
   } catch (e) {
     Notify.toast('Sign in failed', e.message, 'error');
+  }
+});
+
+// ── registration ────────────────────────────────────────────────────────────
+const reg = {
+  photo: null,
+  addressGeo: null,      // { address, lat, lng }
+  opGeo: null,           // { address, lat, lng }
+  certificates: [],      // [{ name, dataUrl }]
+  specs: new Set(),
+  aadhaarTxnId: null,
+  aadhaarVerified: false
+};
+
+function labelizeSvc(s) {
+  return String(s || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function showRegister() {
+  $('loginView').classList.add('hidden');
+  $('registerView').classList.remove('hidden');
+  // build speciality chips once
+  if (!$('regSpecs').dataset.built) {
+    $('regSpecs').innerHTML = Object.values(Speciality).map((s) =>
+      `<label style="flex:0 0 auto"><input type="checkbox" value="${s}" class="reg-spec" /> ${labelizeSvc(s)}</label>`).join('');
+    $('regSpecs').dataset.built = '1';
+    $('regSpecs').querySelectorAll('.reg-spec').forEach((cb) => {
+      cb.addEventListener('change', () => cb.checked ? reg.specs.add(cb.value) : reg.specs.delete(cb.value));
+    });
+  }
+}
+function showLogin() {
+  $('registerView').classList.add('hidden');
+  $('loginView').classList.remove('hidden');
+}
+
+document.getElementById('showRegister').addEventListener('click', (e) => { e.preventDefault(); showRegister(); });
+document.getElementById('showLogin').addEventListener('click', (e) => { e.preventDefault(); showLogin(); });
+
+// operating-location toggle
+$('regSameLocation').addEventListener('change', () => {
+  $('regOpBox').classList.toggle('hidden', $('regSameLocation').checked);
+});
+
+// photo
+$('regPhoto').addEventListener('change', async (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  try {
+    reg.photo = await compressPhoto(f);
+    $('regPhotoPreview').src = reg.photo;
+    $('regPhotoPreview').style.display = 'block';
+  } catch (_) { Notify.toast('Photo', 'Could not read that image', 'error'); }
+});
+
+// address geocode
+$('regGeoAddress').addEventListener('click', async () => {
+  const addr = $('regAddress').value.trim();
+  if (!addr) return;
+  $('regAddressGeo').textContent = 'Locating…';
+  try {
+    const res = await geocode(addr);
+    reg.addressGeo = res
+      ? { address: res.address, lat: res.lat, lng: res.lng }
+      : { address: addr, lat: null, lng: null };
+    $('regAddressGeo').textContent = res ? `Located: ${res.address}` : 'Saved address (no map pin).';
+  } catch (e) {
+    reg.addressGeo = { address: addr, lat: null, lng: null };
+    $('regAddressGeo').textContent = 'Map unavailable: ' + (e.message || 'could not locate');
+  }
+});
+
+// operating location geocode
+$('regGeoOp').addEventListener('click', async () => {
+  const addr = $('regOpAddress').value.trim();
+  if (!addr) return;
+  $('regOpGeo').textContent = 'Locating…';
+  try {
+    const res = await geocode(addr);
+    reg.opGeo = res
+      ? { address: res.address, lat: res.lat, lng: res.lng }
+      : { address: addr, lat: null, lng: null };
+    $('regOpGeo').textContent = res ? `Located: ${res.address}` : 'Saved address (no map pin).';
+  } catch (e) {
+    reg.opGeo = { address: addr, lat: null, lng: null };
+    $('regOpGeo').textContent = 'Map unavailable: ' + (e.message || 'could not locate');
+  }
+});
+
+// certificates (max 3, compressed + size-capped)
+$('regCerts').addEventListener('change', async (e) => {
+  const files = [...(e.target.files || [])].slice(0, 3);
+  reg.certificates = [];
+  $('regCertList').textContent = 'Processing…';
+  const names = [];
+  for (const f of files) {
+    try {
+      const dataUrl = await compressCertificate(f);
+      reg.certificates.push({ name: f.name, dataUrl });
+      names.push(f.name);
+    } catch (err) {
+      Notify.toast('Certificate', err.message, 'error');
+    }
+  }
+  $('regCertList').textContent = names.length ? `Attached: ${names.join(', ')}` : 'No certificates attached.';
+});
+
+// Aadhaar OTP
+$('regSendOtp').addEventListener('click', async () => {
+  const num = $('regAadhaar').value.trim();
+  if (!isValidAadhaarFormat(num)) return Notify.toast('Aadhaar', 'Enter a valid 12-digit number', 'error');
+  $('regAadhaarStatus').textContent = 'Sending OTP…';
+  const res = await Aadhaar.sendOtp(num);
+  if (!res.ok) { $('regAadhaarStatus').textContent = res.error; return; }
+  reg.aadhaarTxnId = res.txnId;
+  $('regOtpBox').classList.remove('hidden');
+  // dev hint only appears with the mock provider
+  $('regAadhaarStatus').textContent = res.devHint ? `OTP sent (demo OTP: ${res.devHint})` : 'OTP sent to registered mobile.';
+});
+
+$('regVerifyOtp').addEventListener('click', async () => {
+  const res = await Aadhaar.verifyOtp(reg.aadhaarTxnId, $('regOtp').value.trim());
+  if (!res.ok) { $('regAadhaarStatus').textContent = res.error; return; }
+  reg.aadhaarVerified = true;
+  $('regAadhaarStatus').textContent = '✓ Aadhaar verified';
+  $('regOtpBox').classList.add('hidden');
+});
+
+// submit
+$('regSubmit').addEventListener('click', async () => {
+  const forename = $('regForename').value.trim();
+  const surname = $('regSurname').value.trim();
+  const phone = $('regPhone').value.trim();
+  const dob = $('regDob').value;
+
+  if (!forename || !surname) return Notify.toast('Registration', 'Enter your name', 'error');
+  if (!phone) return Notify.toast('Registration', 'Enter your mobile number', 'error');
+  if (reg.specs.size === 0) return Notify.toast('Registration', 'Pick at least one specialisation', 'error');
+  if (!reg.addressGeo) return Notify.toast('Registration', 'Locate your address', 'error');
+  if (!reg.aadhaarVerified) return Notify.toast('Registration', 'Verify your Aadhaar via OTP first', 'error');
+
+  // ensure no phone clash with an existing caregiver
+  const existing = await Data.getAll(COLLECTION.CAREGIVERS);
+  if (existing.some((c) => (c.phone || '').replace(/\s/g, '') === phone.replace(/\s/g, ''))) {
+    return Notify.toast('Registration', 'A caregiver with this number already exists.', 'error');
+  }
+
+  const opGeo = $('regSameLocation').checked ? reg.addressGeo : (reg.opGeo || reg.addressGeo);
+  const cg = createCaregiver({
+    forename, surname, phone, dob,
+    specialities: [...reg.specs],
+    photo: reg.photo,
+    address: reg.addressGeo,
+    operatingLocation: opGeo,
+    aadhaar: { number: $('regAadhaar').value.trim(), verified: true },
+    certificates: reg.certificates,
+    status: CaregiverStatus.REGISTERED
+  });
+
+  const btn = $('regSubmit');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+  try {
+    await Data.write(COLLECTION.CAREGIVERS, cg);
+    Notify.toast('Registered', 'Submitted for admin approval. You can log in once activated.', 'success');
+    showLogin();
+  } catch (e) {
+    Notify.toast('Registration failed', e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Submit registration';
   }
 });
 

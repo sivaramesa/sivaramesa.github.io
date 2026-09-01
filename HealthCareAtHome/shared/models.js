@@ -23,6 +23,13 @@ export const Role = Object.freeze({
   ADMIN: 'admin'
 });
 
+// ── Caregiver account status (self-registration lifecycle) ───────────────────
+export const CaregiverStatus = Object.freeze({
+  REGISTERED: 'registered', // submitted, awaiting admin approval — cannot log in
+  ACTIVE: 'active',         // approved by admin — can log in
+  REJECTED: 'rejected'      // admin rejected the registration
+});
+
 // ── Caregiver availability ───────────────────────────────────────────────────
 export const Availability = Object.freeze({
   AVAILABLE: 'available',
@@ -91,18 +98,38 @@ export function createClient({ name, phone, email = '', savedLocations = [] }) {
 }
 
 /** Caregiver — public-facing profile (visible in the app). */
-export function createCaregiver({ name, phone, specialities = [], lat = null, lng = null }) {
+export function createCaregiver({
+  name, phone, specialities = [], lat = null, lng = null,
+  status = CaregiverStatus.ACTIVE, // admin quick-add = pre-approved by default
+  surname = '', forename = '', dob = '', photo = null,
+  address = null,             // { address, lat, lng }
+  operatingLocation = null,   // { address, lat, lng }
+  aadhaar = null,             // { number, verified }
+  certificates = []           // [{ name, dataUrl }]
+}) {
+  const displayName = name || [forename, surname].filter(Boolean).join(' ').trim();
   return {
     id: uid('cg'),
     role: Role.CAREGIVER,
-    name,
+    name: displayName,
+    surname,
+    forename,
+    dob,
     phone,
     specialities,        // array of Speciality values
-    photo: null,         // data-URL thumbnail (shown as identity proof)
+    photo,               // data-URL thumbnail (shown as identity proof)
+    address,             // residence { address, lat, lng }
+    operatingLocation,   // where they serve { address, lat, lng } (used for matching)
+    aadhaar,             // { number, verified }
+    certificates,        // array of { name, dataUrl } (small compressed images)
+    status,              // registered | active | rejected
     availability: Availability.UNAVAILABLE,
     rating: 0,
     ratingCount: 0,
-    location: (lat != null && lng != null) ? { lat, lng, at: nowIso() } : null,
+    // matching location defaults to operating location, else the given lat/lng
+    location: operatingLocation && operatingLocation.lat != null
+      ? { lat: operatingLocation.lat, lng: operatingLocation.lng, at: nowIso() }
+      : (lat != null && lng != null) ? { lat, lng, at: nowIso() } : null,
     accessCode: null,    // secret code for code-based login (set by admin)
     fcmToken: null,      // device push token
     createdAt: nowIso(),

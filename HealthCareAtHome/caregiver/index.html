@@ -27,6 +27,62 @@
       <input id="loginCode" type="text" inputmode="numeric" placeholder="Secret code" />
       <div style="height:10px"></div>
       <button id="loginBtn" class="btn">Sign in</button>
+      <p class="muted center" style="margin-top:14px">New caregiver?
+        <a href="#" id="showRegister">Register here</a>
+      </p>
+    </section>
+
+    <!-- Registration -->
+    <section id="registerView" class="card hidden">
+      <h2>Caregiver registration</h2>
+      <div class="row"><input id="regForename" placeholder="Forename" /><input id="regSurname" placeholder="Surname" /></div>
+      <label>Date of birth</label>
+      <input id="regDob" type="date" />
+      <label>Mobile number</label>
+      <input id="regPhone" type="tel" placeholder="+91 90000 00000" />
+
+      <label>Profile photo</label>
+      <input id="regPhoto" type="file" accept="image/*" />
+      <img id="regPhotoPreview" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover;margin-top:6px;display:none" />
+
+      <label>Specialisations</label>
+      <div id="regSpecs" class="row" style="flex-wrap:wrap;gap:6px"></div>
+
+      <label>Residential address</label>
+      <input id="regAddress" type="text" placeholder="Your home address" />
+      <button id="regGeoAddress" class="btn secondary small" style="margin-top:6px">Locate address</button>
+      <p id="regAddressGeo" class="muted"></p>
+
+      <label style="margin-top:10px"><input type="checkbox" id="regSameLocation" checked /> Operating location same as address</label>
+      <div id="regOpBox" class="hidden">
+        <label>Operating location (where you serve)</label>
+        <input id="regOpAddress" type="text" placeholder="Operating area address" />
+        <button id="regGeoOp" class="btn secondary small" style="margin-top:6px">Locate operating area</button>
+        <p id="regOpGeo" class="muted"></p>
+      </div>
+
+      <label>Certificates (images, max 3)</label>
+      <input id="regCerts" type="file" accept="image/*" multiple />
+      <div id="regCertList" class="muted"></div>
+
+      <hr style="margin:16px 0;border:none;border-top:1px solid var(--line)" />
+      <h2 style="font-size:14px">Aadhaar verification</h2>
+      <label>Aadhaar number (12 digits)</label>
+      <input id="regAadhaar" type="text" inputmode="numeric" maxlength="12" placeholder="XXXXXXXXXXXX" />
+      <button id="regSendOtp" class="btn secondary small" style="margin-top:6px">Send OTP</button>
+      <div id="regOtpBox" class="hidden" style="margin-top:8px">
+        <label>Enter OTP</label>
+        <input id="regOtp" type="text" inputmode="numeric" placeholder="6-digit OTP" />
+        <button id="regVerifyOtp" class="btn small" style="margin-top:6px">Verify OTP</button>
+      </div>
+      <p id="regAadhaarStatus" class="muted"></p>
+
+      <div style="height:14px"></div>
+      <button id="regSubmit" class="btn">Submit registration</button>
+      <p class="muted center" style="margin-top:10px">
+        After submission, the admin verifies your certificates and location before activating your account.
+      </p>
+      <p class="center" style="margin-top:8px"><a href="#" id="showLogin">Back to sign in</a></p>
     </section>
 
     <!-- Availability -->
