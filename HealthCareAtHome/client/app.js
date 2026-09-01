@@ -17,7 +17,7 @@ import { Notify } from '../shared/notify.js';
 import { geocode, createLiveMap } from '../shared/maps.js';
 import { CONFIG } from '../shared/config.js';
 import { Settings } from '../shared/settings.js';
-import { checkProximity, eligibleCaregivers } from '../shared/geo.js';
+import { checkProximity, eligibleCaregivers, distanceMeters } from '../shared/geo.js';
 import { registerWithUpdates } from '../shared/pwa-update.js';
 import { Services } from '../shared/services-master.js';
 import { Aadhaar, isValidAadhaarFormat } from '../shared/aadhaar.js';
@@ -336,7 +336,8 @@ $('loginBtn').addEventListener('click', async () => {
 function enterApp() {
   $('loginView').classList.add('hidden');
   populateSpecialities();
-  populateSavedLocations();
+  populateRecipients();
+  defaultScheduledAt();
 
   if (state.unsubBookings) state.unsubBookings();
   state.unsubBookings = Sync.subscribe(COLLECTION.BOOKINGS, (all) => {
@@ -372,74 +373,129 @@ function populateSpecialities() {
       .map((s) => `<option value="${s}">${labelize(s)}</option>`).join('');
   }
   if (prev) sel.value = prev;
-  prefillCostFromService();
+  recomputeBooking();
 }
 
-/** Pre-fill the (editable) price field from the selected service's cost. */
-function prefillCostFromService() {
+document.getElementById('speciality').addEventListener('change', recomputeBooking);
+
+/** Default the scheduled time to now + 4 hours (local, for datetime-local). */
+function defaultScheduledAt() {
+  const d = new Date(Date.now() + 4 * 60 * 60 * 1000);
+  // format to yyyy-MM-ddTHH:mm in local time
+  const pad = (n) => String(n).padStart(2, '0');
+  $('scheduledAt').value =
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * Build the list of people the client can request service for: self (from the
+ * client profile) plus each registered member. Each carries its own location.
+ */
+function bookingPeople() {
+  const c = state.client;
+  const people = [];
+  const selfName = [c.forename, c.surname].filter(Boolean).join(' ').trim() || c.name || 'Self';
+  people.push({
+    key: 'self',
+    label: `${selfName} (you)`,
+    location: c.address
+      ? { label: selfName, address: c.address.address || '', lat: c.address.lat ?? null, lng: c.address.lng ?? null }
+      : (c.savedLocations && c.savedLocations[0]) || null
+  });
+  (c.members || []).forEach((m, i) => {
+    const who = [m.forename, m.surname].filter(Boolean).join(' ').trim() || `Member ${i + 1}`;
+    people.push({
+      key: 'm' + i,
+      label: m.relationship ? `${who} (${m.relationship})` : who,
+      location: m.address
+        ? { label: who, address: m.address.address || '', lat: m.address.lat ?? null, lng: m.address.lng ?? null }
+        : null
+    });
+  });
+  return people;
+}
+
+function populateRecipients() {
+  const people = bookingPeople();
+  $('recipientList').innerHTML = people.map((p) =>
+    `<label style="display:block"><input type="checkbox" class="recipient" value="${p.key}" ${p.key === 'self' ? 'checked' : ''} /> ${p.label}</label>`
+  ).join('');
+  $('recipientList').querySelectorAll('.recipient').forEach((cb) => cb.addEventListener('change', recomputeBooking));
+  recomputeBooking();
+}
+
+/** Selected people objects, in list order. */
+function selectedPeople() {
+  const people = bookingPeople();
+  const chosen = [...$('recipientList').querySelectorAll('.recipient:checked')].map((cb) => cb.value);
+  return people.filter((p) => chosen.includes(p.key));
+}
+
+/** Derive the single service location: self if selected, else first selected member. */
+function deriveServiceLocation(sel) {
+  if (sel.length === 0) return null;
+  const self = sel.find((p) => p.key === 'self');
+  return (self && self.location) ? self.location : sel[0].location;
+}
+
+/** Recompute cost, service location, and the different-location warning. */
+function recomputeBooking() {
   const svc = state.services.find((s) => s.key === $('speciality').value);
-  if (svc) $('price').value = svc.cost;
-}
+  const unit = svc ? svc.cost : 0;
+  const sel = selectedPeople();
+  const total = unit * sel.length;
 
-document.getElementById('speciality').addEventListener('change', prefillCostFromService);
+  $('costBreakdown').textContent = sel.length
+    ? `₹${unit} × ${sel.length} ${sel.length === 1 ? 'person' : 'people'}`
+    : 'Select at least one person';
+  $('costTotal').textContent = `₹${total}`;
 
-function populateSavedLocations() {
-  const sel = $('savedLocation');
-  const opts = (state.client.savedLocations || [])
-    .map((l, i) => `<option value="${i}">${l.label}: ${l.address}</option>`).join('');
-  sel.innerHTML = opts + '<option value="new">➕ New location…</option>';
-  toggleNewLocation();
-}
+  const loc = deriveServiceLocation(sel);
+  $('serviceLocationLine').textContent = loc
+    ? `Service location: ${loc.address || loc.label}`
+    : '';
 
-$('savedLocation').addEventListener('change', toggleNewLocation);
-function toggleNewLocation() {
-  const isNew = $('savedLocation').value === 'new';
-  $('newLocationBox').classList.toggle('hidden', !isNew);
-}
-
-$('geocodeBtn').addEventListener('click', async () => {
-  const addr = $('newAddress').value.trim();
-  if (!addr) return;
-  $('geoResult').textContent = 'Locating…';
-  try {
-    const res = await geocode(addr);
-    if (res) {
-      state.pendingLocation = { label: 'New', address: res.address, lat: res.lat, lng: res.lng };
-      $('geoResult').textContent = `Located: ${res.address}`;
-    } else {
-      // SDK is fine but the address didn't resolve — keep the raw address.
-      state.pendingLocation = { label: 'New', address: addr, lat: null, lng: null };
-      $('geoResult').textContent = 'Address not found — saved as typed (no map pin).';
-    }
-  } catch (e) {
-    // The Maps SDK itself failed to load — surface the real reason.
-    state.pendingLocation = { label: 'New', address: addr, lat: null, lng: null };
-    $('geoResult').textContent = 'Map unavailable: ' + (e && e.message ? e.message : 'could not load Google Maps.');
+  // soft warning if selected people are at different locations
+  const warnEl = $('recipientWarn');
+  const withCoords = sel.filter((p) => p.location && p.location.lat != null);
+  let differ = false;
+  if (withCoords.length > 1) {
+    const base = withCoords[0].location;
+    differ = withCoords.some((p) => distanceMeters(base, p.location) > 200); // >200m apart
+  } else {
+    // no coords: compare address strings
+    const addrs = new Set(sel.map((p) => (p.location && p.location.address || '').trim()).filter(Boolean));
+    differ = addrs.size > 1;
   }
-});
+  warnEl.textContent = differ
+    ? '⚠ Selected people are at different locations. The caregiver will be sent to one location only (see below).'
+    : '';
+}
 
 // ── book + pay ────────────────────────────────────────────────────────────────
 $('payBookBtn').addEventListener('click', async () => {
   const btn = $('payBookBtn');
-  let location;
-  if ($('savedLocation').value === 'new') {
-    location = state.pendingLocation || (() => {
-      const addr = $('newAddress').value.trim();
-      return addr ? { label: 'New', address: addr, lat: null, lng: null } : null;
-    })();
-  } else {
-    location = state.client.savedLocations[Number($('savedLocation').value)];
-  }
-  if (!location) return Notify.toast('Location', 'Choose or locate a service address', 'error');
-
   const svc = state.services.find((s) => s.key === $('speciality').value);
+  const sel = selectedPeople();
+  if (sel.length === 0) return Notify.toast('Recipients', 'Select at least one person', 'error');
+
+  const location = deriveServiceLocation(sel);
+  if (!location) return Notify.toast('Location', 'The selected person has no address on file', 'error');
+
+  const unit = svc ? svc.cost : 0;
+  const scheduledVal = $('scheduledAt').value;
+  const scheduledAt = scheduledVal ? new Date(scheduledVal).toISOString() : nowIso();
+
   const booking = createBooking({
     clientId: state.client.id,
     speciality: $('speciality').value,
     serviceId: svc ? svc.id : null,
     commissionPct: svc ? svc.commissionPct : null, // snapshot commission at booking time
+    scheduledAt,
+    recipients: sel.map((p) => ({ name: p.label, address: (p.location || {}).address || '', lat: (p.location || {}).lat ?? null, lng: (p.location || {}).lng ?? null })),
+    unitPrice: unit,
     location,
-    price: Number($('price').value) || 0,
+    price: unit * sel.length,
     radiusKm: Number($('radiusKm').value) || CONFIG.rules.defaultMatchRadiusKm
   });
 
@@ -466,8 +522,12 @@ async function renderActive(b) {
 
   $('activeStatus').className = 'badge ' + b.status;
   $('activeStatus').textContent = labelize(b.status);
-  $('activeSummary').textContent =
-    `${labelize(b.speciality)} · ${b.location.address || b.location.label} · ₹${b.price}`;
+  const when = b.scheduledAt ? new Date(b.scheduledAt).toLocaleString() : '';
+  const forWhom = (b.recipients || []).map((r) => r.name).join(', ');
+  $('activeSummary').innerHTML =
+    `${labelize(b.speciality)} · ${b.location.address || b.location.label} · ₹${b.price}`
+    + (when ? `<br><span class="muted">Scheduled: ${when}</span>` : '')
+    + (forWhom ? `<br><span class="muted">For: ${forWhom}</span>` : '');
 
   // live count of caregivers actively available within range, while broadcasting
   const showAvail = b.status === BookingStatus.BROADCAST;

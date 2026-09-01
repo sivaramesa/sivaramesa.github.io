@@ -170,7 +170,13 @@ export function createCaregiver({
 }
 
 /** Booking — the central record every app reads/writes. */
-export function createBooking({ clientId, speciality, location, price, radiusKm, serviceId = null, commissionPct = null }) {
+export function createBooking({
+  clientId, speciality, location, price, radiusKm,
+  serviceId = null, commissionPct = null,
+  scheduledAt = null,   // ISO datetime the service is needed (default set by caller)
+  recipients = [],      // [{ name, label, address, lat, lng }] — who the service is for
+  unitPrice = null      // per-recipient service cost (price = unitPrice * recipients)
+}) {
   return {
     id: uid('bk'),
     clientId,
@@ -178,6 +184,9 @@ export function createBooking({ clientId, speciality, location, price, radiusKm,
     speciality,                    // service key (matches caregiver specialities)
     serviceId,                     // id of the master service, if chosen from it
     commissionPct,                 // commission % snapshot at booking time (per-service)
+    scheduledAt: scheduledAt || nowIso(),
+    recipients,                    // people this service is for
+    unitPrice,                     // per-recipient cost
     location,                      // { label, address, lat, lng }
     radiusKm: radiusKm || null,
     price,

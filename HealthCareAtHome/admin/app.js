@@ -172,10 +172,13 @@ function renderDashboard() {
   $('bookingRows').innerHTML = state.bookings.map((b) => {
     const client = state.clients.find((c) => c.id === b.clientId);
     const cg = state.caregivers.find((c) => c.id === b.caregiverId);
+    const recips = (b.recipients || []).map((r) => r.name).join(', ') || '—';
     return `<tr>
       <td>${fmtDateTime(b.createdAt)}</td>
+      <td>${b.scheduledAt ? fmtDateTime(b.scheduledAt) : '—'}</td>
       <td>${client ? client.name : b.clientId}</td>
-      <td>${labelize(b.speciality)}</td>
+      <td>${labelize(b.speciality)}${b.unitPrice ? ` (₹${b.unitPrice}×${(b.recipients||[]).length||1})` : ''}</td>
+      <td style="font-size:12px">${recips}</td>
       <td>${cg ? cg.name : (b.caregiverName || '—')}</td>
       <td><span class="badge ${b.status}">${labelize(b.status)}</span></td>
       <td class="codes">${b.codes.startCode || '—'}${b.codes.startVerified ? ' ✓' : ''}</td>

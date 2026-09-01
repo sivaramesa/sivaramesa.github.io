@@ -325,11 +325,15 @@ function renderQueue() {
   list.innerHTML = forMe.map((b) => {
     const dist = state.cg.location ? distanceKm(state.cg.location, b.location) : null;
     const distTxt = dist != null && isFinite(dist) ? `${dist.toFixed(1)} km away` : 'distance n/a';
+    const when = b.scheduledAt ? new Date(b.scheduledAt).toLocaleString() : '';
+    const forCount = (b.recipients || []).length;
     return `<div class="card" style="background:#f8fafc">
       <div style="display:flex;justify-content:space-between">
         <strong>${labelize(b.speciality)}</strong><span>₹${b.price}</span>
       </div>
       <div class="muted">${b.location.address || b.location.label} · ${distTxt}</div>
+      ${when ? `<div class="muted">When: ${when}</div>` : ''}
+      ${forCount ? `<div class="muted">${forCount} recipient${forCount === 1 ? '' : 's'}</div>` : ''}
       <button class="btn ok small" data-accept="${b.id}" style="margin-top:8px">Accept</button>
     </div>`;
   }).join('');
@@ -360,7 +364,13 @@ function renderJob(b) {
 
   $('jobStatus').className = 'badge ' + b.status;
   $('jobStatus').textContent = labelize(b.status);
-  $('jobSummary').textContent = `${labelize(b.speciality)} · ${b.location.address || b.location.label} · ₹${b.price}`;
+  {
+    const when = b.scheduledAt ? new Date(b.scheduledAt).toLocaleString() : '';
+    const forWhom = (b.recipients || []).map((r) => r.name).join(', ');
+    $('jobSummary').innerHTML = `${labelize(b.speciality)} · ${b.location.address || b.location.label} · ₹${b.price}`
+      + (when ? `<br><span class="muted">When: ${when}</span>` : '')
+      + (forWhom ? `<br><span class="muted">For: ${forWhom}</span>` : '');
+  }
 
   // start code visible to caregiver from acceptance onward
   const showStart = b.codes.startCode && [BookingStatus.ACCEPTED, BookingStatus.EN_ROUTE, BookingStatus.ARRIVED].includes(b.status);
