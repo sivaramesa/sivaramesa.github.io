@@ -708,6 +708,19 @@ $('verifyStartBtn').addEventListener('click', async () => {
 });
 
 // ── cancel booking (client — only before a caregiver accepts) ─────────────────
+function populateReasonSelect(selectEl) {
+  const reasons = Settings.current().cancelReasons || [];
+  selectEl.innerHTML = '';
+  reasons.forEach((r) => {
+    const o = document.createElement('option');
+    o.value = r; o.textContent = r;
+    selectEl.appendChild(o);
+  });
+  const other = document.createElement('option');
+  other.value = '__other__'; other.textContent = 'Other (free text)';
+  selectEl.appendChild(other);
+}
+
 $('cancelBookingBtn').addEventListener('click', async () => {
   const b = await Data.get(COLLECTION.BOOKINGS, state.activeBookingId);
   if (!b) return;
@@ -716,12 +729,36 @@ $('cancelBookingBtn').addEventListener('click', async () => {
     return Notify.toast('Cannot cancel', 'A caregiver has already accepted this booking.', 'error');
   }
   const paid = b.payment && b.payment.status === 'paid';
-  const msg = paid
-    ? `Cancel this booking? ₹${b.price} will be refunded.`
-    : 'Cancel this booking?';
-  if (!confirm(msg)) return;
+  $('crInfo').textContent = paid ? `₹${b.price} will be refunded.` : 'Your request will be cancelled.';
+  populateReasonSelect($('crReason'));
+  $('crOtherWrap').classList.add('hidden');
+  $('crOther').value = '';
+  $('cancelReasonModal').classList.remove('hidden');
+});
+
+$('crReason').addEventListener('change', () => {
+  $('crOtherWrap').classList.toggle('hidden', $('crReason').value !== '__other__');
+});
+
+$('crClose').addEventListener('click', () => {
+  $('cancelReasonModal').classList.add('hidden');
+});
+
+$('crConfirm').addEventListener('click', async () => {
+  const code = $('crReason').value;
+  const isOther = code === '__other__';
+  const reason = isOther ? $('crOther').value.trim() : code;
+  if (isOther && !reason) return Notify.toast('Reason needed', 'Please specify the reason.', 'error');
+  const b = await Data.get(COLLECTION.BOOKINGS, state.activeBookingId);
+  if (!b) { $('cancelReasonModal').classList.add('hidden'); return; }
+  const cancellable = [BookingStatus.CREATED, BookingStatus.PAID, BookingStatus.BROADCAST].includes(b.status);
+  if (!cancellable) {
+    $('cancelReasonModal').classList.add('hidden');
+    return Notify.toast('Cannot cancel', 'A caregiver has already accepted this booking.', 'error');
+  }
+  $('cancelReasonModal').classList.add('hidden');
   try {
-    const { revision } = await Lifecycle.cancel(b, 'Cancelled by client', { by: 'client' });
+    const { revision } = await Lifecycle.cancel(b, reason, { by: 'client', reasonCode: isOther ? 'Other' : code });
     state.activeBookingId = null;
     state.currentBooking = null;
     Notify.toast('Booking cancelled',

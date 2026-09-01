@@ -39,6 +39,7 @@ function boot() {
   wireCaregiverFilters();
   wireDashboardFilters();
   wireInviteModal();
+  wireCancelReasonModal();
 
   Sync.subscribe(COLLECTION.CLIENTS, (list) => { state.clients = list; renderClients(); renderDashboard(); });
   Sync.subscribe(COLLECTION.CAREGIVERS, (list) => { state.caregivers = list; renderCaregivers(); renderRegistrations(); renderDashboard(); });
@@ -84,6 +85,7 @@ function wireSettings() {
     $('priorityMode').value = s.priorityMode || 'multiplier';
     $('priorityValue').value = s.priorityValue ?? 1.5;
     if ($('matchLocationMode')) $('matchLocationMode').value = s.matchLocationMode || 'gps';
+    if ($('cancelReasons')) $('cancelReasons').value = (s.cancelReasons || []).join('\n');
   });
 
   $('saveSettingsBtn').addEventListener('click', async () => {
@@ -113,6 +115,18 @@ function wireSettings() {
       Notify.toast('Settings saved', 'Booking/priority updated', 'success');
     } catch (e) {
       $('priorityStatus').textContent = 'Save failed: ' + e.message;
+    }
+  });
+
+  $('saveReasonsBtn').addEventListener('click', async () => {
+    const reasons = $('cancelReasons').value
+      .split('\n').map((l) => l.trim()).filter(Boolean);
+    try {
+      await Settings.update({ cancelReasons: reasons });
+      $('reasonsStatus').textContent = `Saved · ${reasons.length} reason code(s)`;
+      Notify.toast('Settings saved', 'Cancellation reasons updated', 'success');
+    } catch (e) {
+      $('reasonsStatus').textContent = 'Save failed: ' + e.message;
     }
   });
 }
@@ -230,7 +244,7 @@ function renderDashboard() {
       <td>${labelize(b.speciality)}${b.unitPrice ? ` (₹${b.unitPrice}×${(b.recipients||[]).length||1})` : ''}</td>
       <td style="font-size:12px">${recips}</td>
       <td>${cg ? cg.name : (b.caregiverName || '—')}</td>
-      <td><span class="badge ${b.status}">${labelize(b.status)}</span></td>
+      <td><span class="badge ${b.status}"${b.status === BookingStatus.CANCELLED && b.cancelReason ? ` title="${escapeAttr((b.cancelReasonCode && b.cancelReasonCode !== b.cancelReason ? b.cancelReasonCode + ': ' : '') + b.cancelReason + (b.cancelledBy ? ' (by ' + b.cancelledBy + ')' : ''))}"` : ''}>${labelize(b.status)}</span>${b.status === BookingStatus.CANCELLED && b.cancelReason ? `<br><span class="muted" style="font-size:11px">${b.cancelReason}</span>` : ''}</td>
       <td class="codes">${b.codes.startCode || '—'}${b.codes.startVerified ? ' ✓' : ''}</td>
       <td class="codes">${b.codes.completeCode || '—'}${b.codes.completeVerified ? ' ✓' : ''}</td>
       <td>${labelize(b.payment.status)}</td>
@@ -266,40 +280,70 @@ function renderDashboard() {
   });
 }
 
+/** Fill a <select> with the configured reason codes plus an "Other" option. */
+function populateReasonSelect(selectEl) {
+  const reasons = Settings.current().cancelReasons || [];
+  selectEl.innerHTML = reasons.map((r) => `<option value="${escapeAttr(r)}">${r}</option>`).join('')
+    + '<option value="__other__">Other (free text)</option>';
+}
+
+let _cancelBookingId = null;
+
 /**
- * Admin cancel flow: cancel any non-completed booking (records a payment
- * revision via Lifecycle.cancel), then ask whether to clone a new request.
- *   No  -> just the cancellation + payment revision.
- *   Yes -> a fresh booking cloned from the original (clonedFrom set), left in
- *          CREATED so the client/admin can carry it forward.
+ * Admin cancel flow: open the reason picker; on confirm, cancel the booking
+ * (records a payment revision via Lifecycle.cancel), then ask whether to clone.
  */
-async function cancelBookingFlow(id) {
+function cancelBookingFlow(id) {
   const b = state.bookings.find((x) => x.id === id);
   if (!b) return;
   if ([BookingStatus.COMPLETED, BookingStatus.CANCELLED].includes(b.status)) {
     return Notify.toast('Cannot cancel', `Booking is already ${labelize(b.status)}.`, 'error');
   }
+  _cancelBookingId = id;
   const paid = b.payment && b.payment.status === 'paid';
-  const confirmMsg = `Cancel booking ${b.id.slice(-6)} (${labelize(b.speciality)})?`
-    + (paid ? `\n₹${b.price} will be refunded (payment revision).` : '\nA payment revision record will be created.');
-  if (!confirm(confirmMsg)) return;
+  $('crId').textContent = '#' + b.id.slice(-6);
+  $('crInfo').textContent = `${labelize(b.speciality)} — `
+    + (paid ? `₹${b.price} will be refunded (payment revision).` : 'A payment revision record will be created.');
+  populateReasonSelect($('crReason'));
+  $('crOtherWrap').classList.add('hidden');
+  $('crOther').value = '';
+  $('cancelReasonModal').classList.remove('hidden');
+}
 
-  try {
-    const { revision } = await Lifecycle.cancel(b, 'Cancelled by admin', { by: 'admin' });
-    // offer to clone a fresh request carrying all the original details
-    const clone = confirm('Cancelled. Clone a new request from these details?\n\nOK = Yes (create a new booking)\nCancel = No (keep only the cancellation)');
-    if (clone) {
-      const fresh = Lifecycle.cloneBooking(b);
-      await Data.write(COLLECTION.BOOKINGS, fresh);
-      Notify.toast('Rebooked', `New request ${fresh.id.slice(-6)} created from ${b.id.slice(-6)}.`, 'success');
-    } else {
-      Notify.toast('Booking cancelled',
-        revision && revision.type === 'refund' ? `Refund of ₹${revision.amount} recorded.` : 'Payment revision recorded.',
-        'success');
+function wireCancelReasonModal() {
+  $('crReason').addEventListener('change', () => {
+    $('crOtherWrap').classList.toggle('hidden', $('crReason').value !== '__other__');
+  });
+  $('crClose').addEventListener('click', () => {
+    $('cancelReasonModal').classList.add('hidden');
+    _cancelBookingId = null;
+  });
+  $('crConfirm').addEventListener('click', async () => {
+    const b = state.bookings.find((x) => x.id === _cancelBookingId);
+    if (!b) { $('cancelReasonModal').classList.add('hidden'); return; }
+    const code = $('crReason').value;
+    const isOther = code === '__other__';
+    const reason = isOther ? $('crOther').value.trim() : code;
+    if (isOther && !reason) return Notify.toast('Reason needed', 'Please specify the reason.', 'error');
+    $('cancelReasonModal').classList.add('hidden');
+    try {
+      const { revision } = await Lifecycle.cancel(b, reason, { by: 'admin', reasonCode: isOther ? 'Other' : code });
+      const clone = confirm('Cancelled. Clone a new request from these details?\n\nOK = Yes (create a new booking)\nCancel = No (keep only the cancellation)');
+      if (clone) {
+        const fresh = Lifecycle.cloneBooking(b);
+        await Data.write(COLLECTION.BOOKINGS, fresh);
+        Notify.toast('Rebooked', `New request ${fresh.id.slice(-6)} created from ${b.id.slice(-6)}.`, 'success');
+      } else {
+        Notify.toast('Booking cancelled',
+          revision && revision.type === 'refund' ? `Refund of ₹${revision.amount} recorded.` : 'Payment revision recorded.',
+          'success');
+      }
+    } catch (e) {
+      Notify.toast('Cancel failed', e.message, 'error');
+    } finally {
+      _cancelBookingId = null;
     }
-  } catch (e) {
-    Notify.toast('Cancel failed', e.message, 'error');
-  }
+  });
 }
 
 // ── edit booking modal ────────────────────────────────────────────────────────

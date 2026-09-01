@@ -106,6 +106,12 @@
           <button id="savePriorityBtn" class="btn small" style="max-width:140px">Save</button>
         </div>
         <p id="priorityStatus" class="muted"></p>
+
+        <h2 style="font-size:14px;margin-top:14px">Cancellation reason codes</h2>
+        <label style="margin:0">One reason per line. An "Other" free-text option is always offered in addition to these.</label>
+        <textarea id="cancelReasons" rows="4" placeholder="No Show of Caregiver&#10;Client requested&#10;Priority changes"></textarea>
+        <button id="saveReasonsBtn" class="btn small" style="max-width:140px">Save reasons</button>
+        <p id="reasonsStatus" class="muted"></p>
       </div>
       <div class="grid cols-3">
         <div class="card center"><div class="muted">Active bookings</div><div id="mActive" class="stat">0</div></div>
@@ -197,6 +203,24 @@
             <button id="ivClose" class="btn secondary">Close</button>
           </div>
           <p id="ivStatus" class="muted"></p>
+        </div>
+      </div>
+
+      <!-- Cancel reason picker modal -->
+      <div id="cancelReasonModal" class="hidden" style="position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:16px">
+        <div class="card" style="max-width:440px;width:100%">
+          <h2>Cancel booking <span id="crId" class="muted"></span></h2>
+          <p id="crInfo" class="muted"></p>
+          <label>Reason</label>
+          <select id="crReason"></select>
+          <div id="crOtherWrap" class="hidden">
+            <label>Please specify</label>
+            <input id="crOther" placeholder="Reason details" />
+          </div>
+          <div class="row" style="margin-top:14px">
+            <button id="crConfirm" class="btn danger">Confirm cancellation</button>
+            <button id="crClose" class="btn secondary">Keep booking</button>
+          </div>
         </div>
       </div>
     </section>

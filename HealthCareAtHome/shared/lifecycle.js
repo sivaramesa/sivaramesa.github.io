@@ -213,12 +213,13 @@ export const Lifecycle = {
    */
   async cancel(booking, reason = '', opts = {}) {
     const by = opts.by || 'client';
+    const reasonCode = opts.reasonCode || reason || '';
     let revision = null;
 
     if (booking.payment && booking.payment.status === 'paid') {
       // reverse the captured charge — a payment revision (refund)
       const txn = await Payments.refund(booking);
-      revision = { type: 'refund', amount: txn.amount, txnId: txn.id, at: txn.at, by, reason };
+      revision = { type: 'refund', amount: txn.amount, txnId: txn.id, at: txn.at, by, reason, reasonCode };
       booking.payment = {
         ...booking.payment,
         status: 'refunded',
@@ -227,14 +228,14 @@ export const Lifecycle = {
       };
     } else {
       // nothing captured — record a zero-value revision for the audit trail
-      revision = { type: 'void', amount: 0, txnId: null, at: nowIso(), by, reason };
+      revision = { type: 'void', amount: 0, txnId: null, at: nowIso(), by, reason, reasonCode };
       if (booking.payment) booking.payment = { ...booking.payment, status: booking.payment.status === 'unpaid' ? 'unpaid' : booking.payment.status };
     }
 
     // keep a running list of payment revisions on the booking (audit trail)
     booking.paymentRevisions = [...(booking.paymentRevisions || []), revision];
 
-    advance(booking, BookingStatus.CANCELLED, { cancelReason: reason, cancelledBy: by });
+    advance(booking, BookingStatus.CANCELLED, { cancelReason: reason, cancelReasonCode: reasonCode, cancelledBy: by });
     await Data.write(COLLECTION.BOOKINGS, booking);
 
     // free the assigned caregiver, if any

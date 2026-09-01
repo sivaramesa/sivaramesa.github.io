@@ -176,6 +176,24 @@
       </div>
     </section>
 
+    <!-- Cancel reason picker modal -->
+    <div id="cancelReasonModal" class="hidden" style="position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:16px">
+      <div class="card" style="max-width:420px;width:100%">
+        <h2 style="margin-top:0">Cancel booking</h2>
+        <p id="crInfo" class="muted"></p>
+        <label>Reason</label>
+        <select id="crReason"></select>
+        <div id="crOtherWrap" class="hidden">
+          <label>Please specify</label>
+          <input id="crOther" placeholder="Reason details" />
+        </div>
+        <div class="row" style="margin-top:14px">
+          <button id="crConfirm" class="btn danger">Confirm cancellation</button>
+          <button id="crClose" class="btn secondary">Keep booking</button>
+        </div>
+      </div>
+    </div>
+
     <div id="recaptcha"></div>
   </main>
 

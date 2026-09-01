@@ -26,7 +26,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
   // Which caregiver location the matching uses when broadcasting/filtering.
   // 'gps' = live shared location, 'registered' = profile operating location,
   // 'both' = eligible if EITHER is within range (OR).
-  matchLocationMode: 'gps'
+  matchLocationMode: 'gps',
+  // Admin-configurable cancellation reason codes (an "Other" free-text option
+  // is always offered by the apps in addition to these).
+  cancelReasons: ['No Show of Caregiver', 'Client requested', 'Priority changes']
 });
 
 /**
