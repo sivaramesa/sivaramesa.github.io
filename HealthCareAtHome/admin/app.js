@@ -28,6 +28,19 @@ const dashFilter = { includeCompleted: false, atRiskOnly: false };
 // per-booking caregiver search (local overrides; never touches app-wide Settings)
 const inviteState = { bookingId: null, radiusKm: null, mode: 'gps', name: '', sex: '', includeOffline: false, selected: new Set() };
 
+/** True when the admin is mid-task: any modal open, or not on the dashboard
+ *  tab. The periodic clock-refresh defers while this is true. */
+function adminIsBusy() {
+  const modalIds = ['editBookingModal', 'cancelReasonModal', 'inviteModal'];
+  const modalOpen = modalIds.some((id) => {
+    const el = document.getElementById(id);
+    return el && !el.classList.contains('hidden');
+  });
+  const dash = document.getElementById('tab-dashboard');
+  const dashVisible = dash && !dash.classList.contains('hidden');
+  return modalOpen || !dashVisible;
+}
+
 function boot() {
   registerServiceWorker();
   Sync.start();
@@ -48,8 +61,15 @@ function boot() {
     renderDashboard(); renderPayments();
   });
 
-  // keep the time-based at-risk highlight fresh as the clock advances
-  setInterval(() => { if (state.bookings.length) renderDashboard(); }, 60000);
+  // Keep the time-based at-risk highlight fresh as the clock advances — but
+  // never re-render underneath ongoing admin activity (an open modal or when
+  // the dashboard tab isn't visible). Real data changes still render via the
+  // Sync subscriptions above; this timer only refreshes the clock-based view.
+  setInterval(() => {
+    if (!state.bookings.length) return;
+    if (adminIsBusy()) return;
+    renderDashboard();
+  }, 60000);
 
   // default report window = today
   setToday();
