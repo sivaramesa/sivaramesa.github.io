@@ -1,0 +1,15 @@
+{
+  "name": "homecare-athome",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "HomeCare @ Home — client/caregiver/admin PWAs",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.1",
+    "jsdom": "^26.1.0"
+  }
+}

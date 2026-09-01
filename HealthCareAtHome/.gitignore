@@ -1,0 +1,6 @@
+# Test tooling — installed locally, not part of the deployed PWA
+node_modules/
+
+# Vitest / coverage output
+coverage/
+.vitest/
