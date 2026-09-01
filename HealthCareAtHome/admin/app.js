@@ -279,6 +279,7 @@ function renderDashboard() {
   if (dashFilter.atRiskOnly) rows = rows.filter((b) => startRiskInfo(b).atRisk);
 
   $('bookingRows').innerHTML = rows.map((b) => {
+   try {
     const client = state.clients.find((c) => c.id === b.clientId);
     const cg = state.caregivers.find((c) => c.id === b.caregiverId);
     const recips = (b.recipients || []).map((r) => r.name).join(', ') || '—';
@@ -309,9 +310,9 @@ function renderDashboard() {
       <td style="font-size:12px">${recips}</td>
       <td>${cg ? cg.name : (b.caregiverName || '—')}</td>
       <td><span class="badge ${b.status}"${b.status === BookingStatus.CANCELLED && b.cancelReason ? ` title="${escapeAttr((b.cancelReasonCode && b.cancelReasonCode !== b.cancelReason ? b.cancelReasonCode + ': ' : '') + b.cancelReason + (b.cancelledBy ? ' (by ' + b.cancelledBy + ')' : ''))}"` : ''}>${labelize(b.status)}</span>${b.status === BookingStatus.CANCELLED && b.cancelReason ? `<br><span class="muted" style="font-size:11px">${b.cancelReason}</span>` : ''}</td>
-      <td class="codes">${b.codes.startCode || '—'}${b.codes.startVerified ? ' ✓' : ''}</td>
-      <td class="codes">${b.codes.completeCode || '—'}${b.codes.completeVerified ? ' ✓' : ''}</td>
-      <td>${labelize(b.payment.status)}</td>
+      <td class="codes">${(b.codes && b.codes.startCode) || '—'}${b.codes && b.codes.startVerified ? ' ✓' : ''}</td>
+      <td class="codes">${(b.codes && b.codes.completeCode) || '—'}${b.codes && b.codes.completeVerified ? ' ✓' : ''}</td>
+      <td>${labelize((b.payment && b.payment.status) || 'unpaid')}</td>
       <td style="white-space:nowrap">
         <button class="btn small" data-edit-bk="${b.id}">Edit</button>
         ${b.status === BookingStatus.BROADCAST ? `<button class="btn small" data-invite-bk="${b.id}">Find caregivers</button>` : ''}
@@ -319,6 +320,11 @@ function renderDashboard() {
         <button class="btn danger small" data-del-bk="${b.id}">Delete</button>
       </td>
     </tr>`;
+   } catch (err) {
+     // never let one malformed record blank the whole table
+     console.warn('Skipping unrenderable booking', b && b.id, err);
+     return `<tr style="background:#fde2e1"><td colspan="12" class="muted">Booking ${b && b.id ? b.id.slice(-6) : '?'} could not be displayed (${err.message}) — <button class="btn danger small" data-del-bk="${b && b.id}">Delete</button></td></tr>`;
+   }
   }).join('');
 
   $('bookingRows').querySelectorAll('[data-del-bk]').forEach((btn) => {
