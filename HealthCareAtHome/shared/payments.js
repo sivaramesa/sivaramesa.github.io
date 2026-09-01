@@ -44,6 +44,11 @@ async function mockPayout(booking) {
   return { id: uid('pay_out'), amount: caregiverAmount, status: 'transferred', at: nowIso() };
 }
 
+async function mockRefund(booking, amount) {
+  await new Promise((r) => setTimeout(r, 400));
+  return { id: uid('pay_rev'), amount, status: 'refunded', at: nowIso() };
+}
+
 export const Payments = {
   commissionSplit,
 
@@ -69,5 +74,16 @@ export const Payments = {
     if (CONFIG.payment.provider === 'mock') return mockPayout(booking);
     console.warn(`Payments: payout provider "${CONFIG.payment.provider}" not wired to a backend yet; using mock.`);
     return mockPayout(booking);
+  },
+
+  /**
+   * Reverse a captured charge on cancellation (a payment revision).
+   * Defaults to a full refund of the booking price; pass an amount for partials.
+   * Returns a { id, amount, status:'refunded', at } transaction record.
+   */
+  async refund(booking, amount = booking.price) {
+    if (CONFIG.payment.provider === 'mock') return mockRefund(booking, amount);
+    console.warn(`Payments: refund provider "${CONFIG.payment.provider}" not wired to a backend yet; using mock.`);
+    return mockRefund(booking, amount);
   }
 };

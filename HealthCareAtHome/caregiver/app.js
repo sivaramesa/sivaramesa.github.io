@@ -330,7 +330,7 @@ function renderQueue() {
     const forCount = (b.recipients || []).length;
     return `<div class="card" style="background:${b.priority ? '#fff4e5' : '#f8fafc'}">
       <div style="display:flex;justify-content:space-between">
-        <strong>${b.priority ? '⚡ ' : ''}${labelize(b.speciality)}</strong><span>₹${b.price}</span>
+        <strong>${b.priority ? '⚡ ' : ''}${b.clonedFrom ? '↻ ' : ''}${labelize(b.speciality)}</strong><span>₹${b.price}</span>
       </div>
       <div class="muted">${b.location.address || b.location.label} · ${distTxt}</div>
       ${when ? `<div class="muted">When: ${when}</div>` : ''}

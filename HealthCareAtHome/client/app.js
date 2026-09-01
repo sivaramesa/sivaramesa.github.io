@@ -562,9 +562,15 @@ async function renderActive(b) {
   const when = b.scheduledAt ? new Date(b.scheduledAt).toLocaleString() : '';
   const forWhom = (b.recipients || []).map((r) => r.name).join(', ');
   $('activeSummary').innerHTML =
-    `${b.priority ? '<span class="badge broadcast">⚡ Priority</span> ' : ''}${labelize(b.speciality)} · ${b.location.address || b.location.label} · ₹${b.price}`
+    `${b.priority ? '<span class="badge broadcast">⚡ Priority</span> ' : ''}`
+    + `${b.clonedFrom ? '<span class="badge accepted">↻ Rebooked</span> ' : ''}`
+    + `${labelize(b.speciality)} · ${b.location.address || b.location.label} · ₹${b.price}`
     + (when ? `<br><span class="muted">Scheduled: ${when}</span>` : '')
     + (forWhom ? `<br><span class="muted">For: ${forWhom}</span>` : '');
+
+  // client may cancel only before a caregiver accepts (no caregiverId yet)
+  const cancellable = [BookingStatus.CREATED, BookingStatus.PAID, BookingStatus.BROADCAST].includes(b.status);
+  $('cancelBox').classList.toggle('hidden', !cancellable);
 
   // live count of caregivers actively available within range, while broadcasting
   const showAvail = b.status === BookingStatus.BROADCAST;
@@ -699,6 +705,32 @@ $('verifyStartBtn').addEventListener('click', async () => {
   const { ok } = await Lifecycle.verifyStartCode(b, $('startCodeInput').value);
   Notify.toast(ok ? 'Verified' : 'Wrong code',
     ok ? 'Service started.' : 'Code did not match. Try again.', ok ? 'success' : 'error');
+});
+
+// ── cancel booking (client — only before a caregiver accepts) ─────────────────
+$('cancelBookingBtn').addEventListener('click', async () => {
+  const b = await Data.get(COLLECTION.BOOKINGS, state.activeBookingId);
+  if (!b) return;
+  const cancellable = [BookingStatus.CREATED, BookingStatus.PAID, BookingStatus.BROADCAST].includes(b.status);
+  if (!cancellable) {
+    return Notify.toast('Cannot cancel', 'A caregiver has already accepted this booking.', 'error');
+  }
+  const paid = b.payment && b.payment.status === 'paid';
+  const msg = paid
+    ? `Cancel this booking? ₹${b.price} will be refunded.`
+    : 'Cancel this booking?';
+  if (!confirm(msg)) return;
+  try {
+    const { revision } = await Lifecycle.cancel(b, 'Cancelled by client', { by: 'client' });
+    state.activeBookingId = null;
+    state.currentBooking = null;
+    Notify.toast('Booking cancelled',
+      revision && revision.type === 'refund' ? `Refund of ₹${revision.amount} initiated.` : 'Your request was cancelled.',
+      'success');
+    showBook();
+  } catch (e) {
+    Notify.toast('Cancel failed', e.message, 'error');
+  }
 });
 
 // ── rating stars ──────────────────────────────────────────────────────────────

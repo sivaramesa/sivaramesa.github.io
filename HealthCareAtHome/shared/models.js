@@ -62,10 +62,10 @@ export const TRANSITIONS = Object.freeze({
   en_route: ['arrived', 'cancelled'],
   arrived: ['in_service', 'cancelled'],
   in_service: ['completion_pending', 'cancelled'],
-  completion_pending: ['completed'],
+  completion_pending: ['completed', 'cancelled'], // admin may still cancel before completion
   completed: [],
   cancelled: [],
-  expired: ['broadcast'] // admin can re-broadcast an expired request
+  expired: ['broadcast', 'cancelled'] // admin can re-broadcast or cancel a lapsed request
 });
 
 // ── Specialities offered (matched against caregiver skills) ──────────────────
@@ -176,7 +176,8 @@ export function createBooking({
   scheduledAt = null,   // ISO datetime the service is needed (default set by caller)
   recipients = [],      // [{ name, label, address, lat, lng }] — who the service is for
   unitPrice = null,     // per-recipient service cost (base price = unitPrice * recipients)
-  priority = false      // priority booking (expedited; different rate + admin workflow)
+  priority = false,     // priority booking (expedited; different rate + admin workflow)
+  clonedFrom = null     // id of the cancelled booking this was cloned from (differentiator)
 }) {
   return {
     id: uid('bk'),
@@ -189,6 +190,7 @@ export function createBooking({
     recipients,                    // people this service is for
     unitPrice,                     // per-recipient cost
     priority,                      // expedited booking
+    clonedFrom,                    // originating (cancelled) booking id, if this is a clone
     location,                      // { label, address, lat, lng }
     radiusKm: radiusKm || null,
     price,

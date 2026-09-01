@@ -209,10 +209,14 @@ function renderDashboard() {
     const client = state.clients.find((c) => c.id === b.clientId);
     const cg = state.caregivers.find((c) => c.id === b.caregiverId);
     const recips = (b.recipients || []).map((r) => r.name).join(', ') || '—';
-    const typeCell = b.priority
-      ? '<span class="badge broadcast">⚡ Priority</span>'
-      : '<span class="badge">Normal</span>';
-    const rowStyle = b.priority ? ' style="background:#fff4e5"' : '';
+    const badges = [];
+    if (b.priority) badges.push('<span class="badge broadcast">⚡ Priority</span>');
+    if (b.clonedFrom) badges.push('<span class="badge accepted">↻ Rebooked</span>');
+    const typeCell = badges.length ? badges.join(' ') : '<span class="badge">Normal</span>';
+    // priority tints orange; a clone (non-priority) tints blue
+    const bg = b.priority ? '#fff4e5' : (b.clonedFrom ? '#eef6ff' : '');
+    const rowStyle = bg ? ` style="background:${bg}"` : '';
+    const canCancel = ![BookingStatus.COMPLETED, BookingStatus.CANCELLED].includes(b.status);
     return `<tr${rowStyle}>
       <td>${typeCell}</td>
       <td>${fmtDateTime(b.createdAt)}</td>
@@ -227,6 +231,7 @@ function renderDashboard() {
       <td>${labelize(b.payment.status)}</td>
       <td style="white-space:nowrap">
         <button class="btn small" data-edit-bk="${b.id}">Edit</button>
+        ${canCancel ? `<button class="btn secondary small" data-cancel-bk="${b.id}">Cancel</button>` : ''}
         <button class="btn danger small" data-del-bk="${b.id}">Delete</button>
       </td>
     </tr>`;
@@ -245,6 +250,46 @@ function renderDashboard() {
   $('bookingRows').querySelectorAll('[data-edit-bk]').forEach((btn) => {
     btn.addEventListener('click', () => openEditBooking(btn.dataset.editBk));
   });
+
+  $('bookingRows').querySelectorAll('[data-cancel-bk]').forEach((btn) => {
+    btn.addEventListener('click', () => cancelBookingFlow(btn.dataset.cancelBk));
+  });
+}
+
+/**
+ * Admin cancel flow: cancel any non-completed booking (records a payment
+ * revision via Lifecycle.cancel), then ask whether to clone a new request.
+ *   No  -> just the cancellation + payment revision.
+ *   Yes -> a fresh booking cloned from the original (clonedFrom set), left in
+ *          CREATED so the client/admin can carry it forward.
+ */
+async function cancelBookingFlow(id) {
+  const b = state.bookings.find((x) => x.id === id);
+  if (!b) return;
+  if ([BookingStatus.COMPLETED, BookingStatus.CANCELLED].includes(b.status)) {
+    return Notify.toast('Cannot cancel', `Booking is already ${labelize(b.status)}.`, 'error');
+  }
+  const paid = b.payment && b.payment.status === 'paid';
+  const confirmMsg = `Cancel booking ${b.id.slice(-6)} (${labelize(b.speciality)})?`
+    + (paid ? `\n₹${b.price} will be refunded (payment revision).` : '\nA payment revision record will be created.');
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const { revision } = await Lifecycle.cancel(b, 'Cancelled by admin', { by: 'admin' });
+    // offer to clone a fresh request carrying all the original details
+    const clone = confirm('Cancelled. Clone a new request from these details?\n\nOK = Yes (create a new booking)\nCancel = No (keep only the cancellation)');
+    if (clone) {
+      const fresh = Lifecycle.cloneBooking(b);
+      await Data.write(COLLECTION.BOOKINGS, fresh);
+      Notify.toast('Rebooked', `New request ${fresh.id.slice(-6)} created from ${b.id.slice(-6)}.`, 'success');
+    } else {
+      Notify.toast('Booking cancelled',
+        revision && revision.type === 'refund' ? `Refund of ₹${revision.amount} recorded.` : 'Payment revision recorded.',
+        'success');
+    }
+  } catch (e) {
+    Notify.toast('Cancel failed', e.message, 'error');
+  }
 }
 
 // ── edit booking modal ────────────────────────────────────────────────────────

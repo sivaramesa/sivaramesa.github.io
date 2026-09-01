@@ -16,7 +16,7 @@
  *   requestCompletion()   req 8  — caregiver asks to finish, COMPLETE code issued
  *   verifyCompletion()    req 9  — client verifies OTP + rating -> officially done
  */
-import { BookingStatus, TRANSITIONS, Availability, nowIso } from './models.js';
+import { BookingStatus, TRANSITIONS, Availability, nowIso, createBooking } from './models.js';
 import { generateCode, verifyCode } from './codes.js';
 import { eligibleCaregivers, estimateEtaMinutes, distanceKm } from './geo.js';
 import { Data } from './sync.js';
@@ -202,9 +202,73 @@ export const Lifecycle = {
     return booking;
   },
 
-  async cancel(booking, reason = '') {
-    advance(booking, BookingStatus.CANCELLED, { cancelReason: reason });
+  /**
+   * Cancel a booking. Records a payment revision:
+   *   - if the client had paid, a refund txn is created and payment.status -> 'refunded'
+   *   - otherwise the (unpaid) payment is simply marked 'cancelled'
+   * Also frees any assigned caregiver (availability -> available).
+   * @param {object} booking
+   * @param {string} reason
+   * @param {object} [opts] { by:'client'|'admin' }
+   */
+  async cancel(booking, reason = '', opts = {}) {
+    const by = opts.by || 'client';
+    let revision = null;
+
+    if (booking.payment && booking.payment.status === 'paid') {
+      // reverse the captured charge — a payment revision (refund)
+      const txn = await Payments.refund(booking);
+      revision = { type: 'refund', amount: txn.amount, txnId: txn.id, at: txn.at, by, reason };
+      booking.payment = {
+        ...booking.payment,
+        status: 'refunded',
+        refundTxnId: txn.id,
+        refundedAt: txn.at
+      };
+    } else {
+      // nothing captured — record a zero-value revision for the audit trail
+      revision = { type: 'void', amount: 0, txnId: null, at: nowIso(), by, reason };
+      if (booking.payment) booking.payment = { ...booking.payment, status: booking.payment.status === 'unpaid' ? 'unpaid' : booking.payment.status };
+    }
+
+    // keep a running list of payment revisions on the booking (audit trail)
+    booking.paymentRevisions = [...(booking.paymentRevisions || []), revision];
+
+    advance(booking, BookingStatus.CANCELLED, { cancelReason: reason, cancelledBy: by });
     await Data.write(COLLECTION.BOOKINGS, booking);
-    return booking;
+
+    // free the assigned caregiver, if any
+    if (booking.caregiverId) {
+      const caregiver = await Data.get(COLLECTION.CAREGIVERS, booking.caregiverId);
+      if (caregiver && caregiver.availability === Availability.ON_SERVICE) {
+        caregiver.availability = Availability.AVAILABLE;
+        caregiver.updatedAt = nowIso();
+        await Data.write(COLLECTION.CAREGIVERS, caregiver);
+      }
+    }
+
+    return { booking, revision };
+  },
+
+  /**
+   * Clone a (usually just-cancelled) booking into a fresh CREATED request,
+   * carrying over all the request details and stamping clonedFrom = original.id
+   * so the new record is differentiable (like priority).
+   */
+  cloneBooking(original) {
+    return createBooking({
+      clientId: original.clientId,
+      speciality: original.speciality,
+      location: original.location,
+      price: original.price,
+      radiusKm: original.radiusKm,
+      serviceId: original.serviceId,
+      commissionPct: original.commissionPct,
+      scheduledAt: original.scheduledAt,
+      recipients: original.recipients,
+      unitPrice: original.unitPrice,
+      priority: original.priority,
+      clonedFrom: original.id
+    });
   }
 };
