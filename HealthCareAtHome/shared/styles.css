@@ -32,6 +32,16 @@ body {
   box-shadow: var(--shadow);
 }
 .topbar h1 { font-size: 17px; margin: 0; font-weight: 600; }
+.topbar .user-chip {
+  display: inline-flex; align-items: center; gap: 8px; margin-left: auto; margin-right: 10px;
+  font-size: 13px; font-weight: 600; color: #fff; max-width: 45%;
+}
+.topbar .user-chip #userName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar .user-avatar {
+  width: 28px; height: 28px; border-radius: 50%; object-fit: cover;
+  background: rgba(255,255,255,.25); border: 1px solid rgba(255,255,255,.5);
+  flex: 0 0 auto;
+}
 .topbar .role-tag {
   font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
   background: rgba(255,255,255,.2); padding: 3px 8px; border-radius: 999px;

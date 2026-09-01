@@ -258,6 +258,7 @@ function enterApp() {
   $('loginView').classList.add('hidden');
   $('availView').classList.remove('hidden');
   $('queueView').classList.remove('hidden');
+  renderUserChip(state.cg);
   $('cgHello').textContent = `Hi, ${state.cg.name}`;
   $('cgSkills').textContent = (state.cg.specialities || []).map(labelize).join(', ');
   renderAvailability();
@@ -312,6 +313,17 @@ async function setAvailability(value) {
   await Data.write(COLLECTION.CAREGIVERS, state.cg);
   renderAvailability();
   renderQueue();
+}
+
+/** Show the logged-in caregiver's photo thumbnail + name in the top banner. */
+function renderUserChip(user) {
+  const chip = $('userChip');
+  if (!chip || !user) return;
+  $('userName').textContent = user.name || '';
+  const img = $('userPhoto');
+  if (user.photo) { img.src = user.photo; img.style.display = ''; }
+  else { img.removeAttribute('src'); img.style.display = 'none'; }
+  chip.classList.remove('hidden');
 }
 
 function renderAvailability() {
