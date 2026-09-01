@@ -345,19 +345,43 @@ function enterApp() {
       .filter((b) => b.clientId === state.client.id)
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     const active = mine.find((b) => ![BookingStatus.COMPLETED, BookingStatus.CANCELLED, BookingStatus.EXPIRED].includes(b.status));
-    if (active) { state.activeBookingId = active.id; renderActive(active); }
-    else if (state.activeBookingId) {
-      const done = mine.find((b) => b.id === state.activeBookingId);
-      if (done) renderActive(done); else showBook();
-    } else {
-      showBook();
+    if (active) { state.activeBookingId = active.id; renderActive(active); return; }
+
+    // no in-progress booking. If we were tracking one, decide how to land.
+    if (state.activeBookingId) {
+      const tracked = mine.find((b) => b.id === state.activeBookingId);
+      if (tracked && tracked.status === BookingStatus.COMPLETED) {
+        renderActive(tracked);                 // show completion + rating screen
+      } else {
+        // cancelled / expired / vanished — don't hang on a dead card
+        if (tracked && (tracked.status === BookingStatus.CANCELLED || tracked.status === BookingStatus.EXPIRED)) {
+          const reason = tracked.cancelReason ? ` (${tracked.cancelReason})` : '';
+          Notify.toast(
+            tracked.status === BookingStatus.CANCELLED ? 'Booking cancelled' : 'Request expired',
+            tracked.status === BookingStatus.CANCELLED
+              ? `Your booking was cancelled${reason}.`
+              : 'No caregiver accepted in time.',
+            'info');
+        }
+        resetToBook();
+      }
+      return;
     }
+    showBook();
   });
 }
 
 function showBook() {
   $('bookView').classList.remove('hidden');
   $('activeView').classList.add('hidden');
+}
+
+/** Clear any tracked booking and return cleanly to the book screen. */
+function resetToBook() {
+  state.activeBookingId = null;
+  state.currentBooking = null;
+  state.liveMap = null;
+  showBook();
 }
 
 function populateSpecialities() {

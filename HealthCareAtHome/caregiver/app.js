@@ -264,13 +264,31 @@ function enterApp() {
 
   if (state.unsub) state.unsub();
   state.unsub = Sync.subscribe(COLLECTION.BOOKINGS, (all) => {
+    const prevJobId = state.activeJobId;
     state.bookings = all;
     // is there a job assigned to me still in progress?
     const active = all.find((b) =>
       b.caregiverId === state.cg.id &&
       ![BookingStatus.COMPLETED, BookingStatus.CANCELLED, BookingStatus.EXPIRED].includes(b.status));
-    if (active) { state.activeJobId = active.id; renderJob(active); }
-    else { state.activeJobId = null; $('jobView').classList.add('hidden'); renderQueue(); }
+    if (active) { state.activeJobId = active.id; renderJob(active); return; }
+
+    // no active job. If I *had* one and it just got cancelled, land cleanly.
+    if (prevJobId) {
+      const prev = all.find((b) => b.id === prevJobId);
+      if (prev && prev.status === BookingStatus.CANCELLED) {
+        stopSharing();                                   // kill location watch/ping
+        // mirror the server-side free so my queue/badge reflect availability
+        if (state.cg.availability === Availability.ON_SERVICE) {
+          state.cg.availability = Availability.AVAILABLE;
+        }
+        renderAvailability();
+        const reason = prev.cancelReason ? ` (${prev.cancelReason})` : '';
+        Notify.toast('Job cancelled', `This job was cancelled${reason}. You're available again.`, 'info');
+      }
+    }
+    state.activeJobId = null;
+    $('jobView').classList.add('hidden');
+    renderQueue();
   });
 }
 
