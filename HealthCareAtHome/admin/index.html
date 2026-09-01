@@ -151,6 +151,46 @@
           </div>
         </div>
       </div>
+
+      <!-- Find & invite caregivers modal (open bookings only) -->
+      <div id="inviteModal" class="hidden" style="position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:16px">
+        <div class="card" style="max-width:640px;width:100%;max-height:90vh;overflow:auto">
+          <h2>Find caregivers <span id="ivId" class="muted"></span></h2>
+          <p id="ivBookingMeta" class="muted"></p>
+          <div class="row" style="align-items:end">
+            <div><label style="margin:0">Name contains</label><input id="ivName" placeholder="Name" /></div>
+            <div><label style="margin:0">Sex</label>
+              <select id="ivSex"><option value="">Any</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select>
+            </div>
+          </div>
+          <div class="row" style="align-items:end">
+            <div><label style="margin:0">Search radius (km)</label><input id="ivRadius" type="number" min="1" step="1" /></div>
+            <div><label style="margin:0">Match location by (this search only)</label>
+              <select id="ivMode">
+                <option value="gps">Current GPS location</option>
+                <option value="registered">Registered service location</option>
+                <option value="both">Either in range</option>
+              </select>
+            </div>
+          </div>
+          <p class="muted" style="font-size:12px;margin:4px 0">Overrides here affect this search only — the app-wide setting is unchanged. Distances are measured from the booking's service location.</p>
+          <div class="row" style="margin:8px 0">
+            <button id="ivSearch" class="btn small">Search</button>
+            <span id="ivCount" class="muted"></span>
+          </div>
+          <div class="scroll" style="max-height:38vh">
+            <table>
+              <thead><tr><th></th><th>Name</th><th>Sex</th><th>Specialities</th><th>Status</th><th>Distance</th><th>★</th></tr></thead>
+              <tbody id="ivRows"></tbody>
+            </table>
+          </div>
+          <div class="row" style="margin-top:14px">
+            <button id="ivLink" class="btn ok">Link selected (high precedence)</button>
+            <button id="ivClose" class="btn secondary">Close</button>
+          </div>
+          <p id="ivStatus" class="muted"></p>
+        </div>
+      </div>
     </section>
 
     <!-- Clients: PII, admin-only -->

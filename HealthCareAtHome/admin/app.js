@@ -25,6 +25,8 @@ const $ = (id) => document.getElementById(id);
 const state = { clients: [], caregivers: [], bookings: [], services: [] };
 const cgFilter = { name: '', spec: '', sex: '', km: null, point: null }; // point: {lat,lng}
 const dashFilter = { includeCompleted: false };
+// per-booking caregiver search (local overrides; never touches app-wide Settings)
+const inviteState = { bookingId: null, radiusKm: null, mode: 'gps', name: '', sex: '', selected: new Set() };
 
 function boot() {
   registerServiceWorker();
@@ -36,6 +38,7 @@ function boot() {
   wireServices();
   wireCaregiverFilters();
   wireDashboardFilters();
+  wireInviteModal();
 
   Sync.subscribe(COLLECTION.CLIENTS, (list) => { state.clients = list; renderClients(); renderDashboard(); });
   Sync.subscribe(COLLECTION.CAREGIVERS, (list) => { state.caregivers = list; renderCaregivers(); renderRegistrations(); renderDashboard(); });
@@ -212,6 +215,8 @@ function renderDashboard() {
     const badges = [];
     if (b.priority) badges.push('<span class="badge broadcast">⚡ Priority</span>');
     if (b.clonedFrom) badges.push('<span class="badge accepted">↻ Rebooked</span>');
+    const invitedN = (b.invitedCaregiverIds || []).length;
+    if (invitedN) badges.push(`<span class="badge in_service">★ Invited ${invitedN}</span>`);
     const typeCell = badges.length ? badges.join(' ') : '<span class="badge">Normal</span>';
     // priority tints orange; a clone (non-priority) tints blue
     const bg = b.priority ? '#fff4e5' : (b.clonedFrom ? '#eef6ff' : '');
@@ -231,6 +236,7 @@ function renderDashboard() {
       <td>${labelize(b.payment.status)}</td>
       <td style="white-space:nowrap">
         <button class="btn small" data-edit-bk="${b.id}">Edit</button>
+        ${b.status === BookingStatus.BROADCAST ? `<button class="btn small" data-invite-bk="${b.id}">Find caregivers</button>` : ''}
         ${canCancel ? `<button class="btn secondary small" data-cancel-bk="${b.id}">Cancel</button>` : ''}
         <button class="btn danger small" data-del-bk="${b.id}">Delete</button>
       </td>
@@ -253,6 +259,10 @@ function renderDashboard() {
 
   $('bookingRows').querySelectorAll('[data-cancel-bk]').forEach((btn) => {
     btn.addEventListener('click', () => cancelBookingFlow(btn.dataset.cancelBk));
+  });
+
+  $('bookingRows').querySelectorAll('[data-invite-bk]').forEach((btn) => {
+    btn.addEventListener('click', () => openInviteModal(btn.dataset.inviteBk));
   });
 }
 
@@ -569,6 +579,118 @@ function wireCaregiverFilters() {
     $('fltName').value = ''; $('fltSpec').value = ''; $('fltSex').value = '';
     $('fltKm').value = ''; $('fltGeoAddr').value = ''; $('fltGeoStatus').textContent = '';
     renderCaregivers();
+  });
+}
+
+// ── admin: find & invite caregivers for an open (broadcast) booking ──────────
+function openInviteModal(id) {
+  const b = state.bookings.find((x) => x.id === id);
+  if (!b) return;
+  if (b.status !== BookingStatus.BROADCAST) {
+    return Notify.toast('Not open', 'Only open (broadcast) bookings can be targeted.', 'error');
+  }
+  inviteState.bookingId = id;
+  inviteState.radiusKm = b.radiusKm || 10;
+  inviteState.mode = Settings.current().matchLocationMode || 'gps';
+  inviteState.name = '';
+  inviteState.sex = '';
+  inviteState.selected = new Set(b.invitedCaregiverIds || []);
+
+  $('ivId').textContent = '#' + b.id.slice(-6);
+  $('ivBookingMeta').textContent =
+    `${labelize(b.speciality)} · ${b.location.address || b.location.label || 'service location'} · scheduled ${b.scheduledAt ? fmtDateTime(b.scheduledAt) : '—'}`;
+  $('ivName').value = '';
+  $('ivSex').value = '';
+  $('ivRadius').value = inviteState.radiusKm;
+  $('ivMode').value = inviteState.mode;
+  $('ivStatus').textContent = '';
+  renderInviteResults();
+  $('inviteModal').classList.remove('hidden');
+}
+
+function closeInviteModal() {
+  $('inviteModal').classList.add('hidden');
+  inviteState.bookingId = null;
+}
+
+function renderInviteResults() {
+  const b = state.bookings.find((x) => x.id === inviteState.bookingId);
+  if (!b) return;
+  const mode = inviteState.mode;
+  const radius = inviteState.radiusKm || Infinity;
+
+  // candidates: approved caregivers matching the booking speciality
+  let list = state.caregivers.filter((c) =>
+    (c.status || CaregiverStatus.ACTIVE) !== CaregiverStatus.REGISTERED &&
+    Array.isArray(c.specialities) && c.specialities.includes(b.speciality));
+
+  if (inviteState.name) {
+    const q = inviteState.name.toLowerCase();
+    list = list.filter((c) => (c.name || '').toLowerCase().includes(q));
+  }
+  if (inviteState.sex) list = list.filter((c) => (c.sex || '') === inviteState.sex);
+
+  // distance from the booking's service location, per the LOCAL match mode
+  const withDist = list
+    .map((c) => ({ cg: c, dist: caregiverDistanceKm(c, b, mode) }))
+    .filter((x) => !isFinite(radius) ? true : (x.dist <= radius))
+    .sort((a, b2) => (a.dist ?? Infinity) - (b2.dist ?? Infinity));
+
+  $('ivCount').textContent = `${withDist.length} match(es) within ${isFinite(radius) ? radius + ' km' : 'any range'}`;
+
+  $('ivRows').innerHTML = withDist.map(({ cg: c, dist }) => {
+    const checked = inviteState.selected.has(c.id) ? 'checked' : '';
+    const distTxt = isFinite(dist) ? `${dist.toFixed(1)} km` : 'n/a';
+    const availBadge = c.availability === Availability.AVAILABLE ? 'in_service'
+      : c.availability === Availability.ON_SERVICE ? 'accepted' : 'cancelled';
+    return `<tr>
+      <td><input type="checkbox" data-iv-pick="${c.id}" ${checked} /></td>
+      <td>${c.name}</td>
+      <td>${c.sex || '—'}</td>
+      <td style="font-size:12px">${(c.specialities || []).map(labelize).join(', ')}</td>
+      <td><span class="badge ${availBadge}">${labelize(c.availability)}</span></td>
+      <td>${distTxt}</td>
+      <td>★ ${c.rating || 'new'}</td>
+    </tr>`;
+  }).join('');
+
+  $('ivRows').querySelectorAll('[data-iv-pick]').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const cid = cb.dataset.ivPick;
+      if (cb.checked) inviteState.selected.add(cid); else inviteState.selected.delete(cid);
+    });
+  });
+}
+
+function wireInviteModal() {
+  $('ivName').addEventListener('input', () => { inviteState.name = $('ivName').value.trim(); renderInviteResults(); });
+  $('ivSex').addEventListener('change', () => { inviteState.sex = $('ivSex').value; renderInviteResults(); });
+  $('ivRadius').addEventListener('input', () => { inviteState.radiusKm = Number($('ivRadius').value) || null; renderInviteResults(); });
+  $('ivMode').addEventListener('change', () => { inviteState.mode = $('ivMode').value; renderInviteResults(); });
+  $('ivSearch').addEventListener('click', renderInviteResults);
+  $('ivClose').addEventListener('click', closeInviteModal);
+
+  $('ivLink').addEventListener('click', async () => {
+    const b = state.bookings.find((x) => x.id === inviteState.bookingId);
+    if (!b) return;
+    const ids = [...inviteState.selected];
+    if (!ids.length) return Notify.toast('No selection', 'Pick at least one caregiver to link.', 'error');
+    try {
+      b.invitedCaregiverIds = ids;                 // high-precedence targeted invite
+      b.updatedAt = nowIso();
+      await Data.write(COLLECTION.BOOKINGS, b);      // stays in 'broadcast'; schemaless field
+      const picked = state.caregivers.filter((c) => ids.includes(c.id));
+      await Notify.toCaregivers(picked, {
+        title: 'Priority invite',
+        body: `Admin invited you to ${labelize(b.speciality)} near ${b.location.label || 'client'}`,
+        bookingId: b.id
+      });
+      $('ivStatus').textContent = `Linked ${ids.length} caregiver(s) with high precedence.`;
+      Notify.toast('Caregivers linked', `${ids.length} invited to booking ${b.id.slice(-6)}`, 'success');
+      closeInviteModal();
+    } catch (e) {
+      $('ivStatus').textContent = 'Link failed: ' + e.message;
+    }
   });
 }
 

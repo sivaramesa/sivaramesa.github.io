@@ -305,7 +305,13 @@ function renderAvailability() {
 // ── request queue (req 3/4: see broadcast requests I'm eligible for) ────────────
 function renderQueue() {
   const list = $('queueList');
-  if (state.activeJobId || state.cg.availability !== Availability.AVAILABLE) {
+  const meInvited = (b) => Array.isArray(b.invitedCaregiverIds) && b.invitedCaregiverIds.includes(state.cg.id);
+  const open = state.bookings.filter((b) => b.status === BookingStatus.BROADCAST);
+  const anyInvite = open.some(meInvited);
+
+  // If I'm on a job, nothing to show. If I'm not "available", I still see admin
+  // invites (high precedence) — but not the general broadcast queue.
+  if (state.activeJobId || (state.cg.availability !== Availability.AVAILABLE && !anyInvite)) {
     list.innerHTML = '';
     $('queueEmpty').classList.toggle('hidden', !!state.activeJobId);
     $('queueEmpty').textContent = state.activeJobId
@@ -315,23 +321,32 @@ function renderQueue() {
   }
 
   const matchMode = Settings.current().matchLocationMode || 'gps';
-  const open = state.bookings.filter((b) => b.status === BookingStatus.BROADCAST);
-  // keep only requests where I match speciality + range (per admin match mode)
+  const available = state.cg.availability === Availability.AVAILABLE;
+  // Show a request if I'm invited (bypasses radius; speciality still required),
+  // or — when available — I match speciality + range via the normal rule.
   const forMe = open.filter((b) => {
-    const ok = eligibleCaregivers(b, [state.cg], b.radiusKm, matchMode);
-    return ok.length > 0;
+    const specOk = Array.isArray(state.cg.specialities) && state.cg.specialities.includes(b.speciality);
+    if (meInvited(b)) return specOk;
+    if (!available) return false;
+    return eligibleCaregivers(b, [state.cg], b.radiusKm, matchMode).length > 0;
   });
+
+  // invited requests first (high precedence)
+  forMe.sort((a, b) => (meInvited(b) ? 1 : 0) - (meInvited(a) ? 1 : 0));
 
   $('queueEmpty').classList.toggle('hidden', forMe.length > 0);
   list.innerHTML = forMe.map((b) => {
+    const invited = meInvited(b);
     const dist = caregiverDistanceKm(state.cg, b, matchMode);
     const distTxt = dist != null && isFinite(dist) ? `${dist.toFixed(1)} km away` : 'distance n/a';
     const when = b.scheduledAt ? new Date(b.scheduledAt).toLocaleString() : '';
     const forCount = (b.recipients || []).length;
-    return `<div class="card" style="background:${b.priority ? '#fff4e5' : '#f8fafc'}">
+    const bg = invited ? '#e8f7ee' : (b.priority ? '#fff4e5' : '#f8fafc');
+    return `<div class="card" style="background:${bg}">
       <div style="display:flex;justify-content:space-between">
         <strong>${b.priority ? '⚡ ' : ''}${b.clonedFrom ? '↻ ' : ''}${labelize(b.speciality)}</strong><span>₹${b.price}</span>
       </div>
+      ${invited ? '<div><span class="badge in_service">★ Admin invite — priority</span></div>' : ''}
       <div class="muted">${b.location.address || b.location.label} · ${distTxt}</div>
       ${when ? `<div class="muted">When: ${when}</div>` : ''}
       ${forCount ? `<div class="muted">${forCount} recipient${forCount === 1 ? '' : 's'}</div>` : ''}
