@@ -15,6 +15,7 @@ import { Lifecycle } from '../shared/lifecycle.js';
 import { Payments } from '../shared/payments.js';
 import { Notify } from '../shared/notify.js';
 import { Settings } from '../shared/settings.js';
+import { registerWithUpdates } from '../shared/pwa-update.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -314,7 +315,7 @@ function fmtDateTime(iso) {
   try { return new Date(iso).toLocaleString(); } catch (_) { return iso; }
 }
 function registerServiceWorker() {
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+  registerWithUpdates('./sw.js');
 }
 
 boot();

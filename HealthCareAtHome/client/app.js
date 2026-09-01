@@ -18,6 +18,7 @@ import { geocode, createLiveMap } from '../shared/maps.js';
 import { CONFIG } from '../shared/config.js';
 import { Settings } from '../shared/settings.js';
 import { checkProximity, eligibleCaregivers } from '../shared/geo.js';
+import { registerWithUpdates } from '../shared/pwa-update.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -382,9 +383,7 @@ function labelize(s) {
 }
 
 function registerServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
-  }
+  registerWithUpdates('./sw.js');
 }
 
 boot();
