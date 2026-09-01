@@ -507,11 +507,17 @@ async function submitBooking(priority) {
       'error');
   }
 
-  const price = priority ? priorityPrice(base, sel.length, state.settings) : base;
+  // Guard: never let a bad number reach Firestore (NaN/undefined breaks the write).
+  const safeBase = Number.isFinite(base) ? base : 0;
+  let price = priority ? priorityPrice(safeBase, sel.length, state.settings) : safeBase;
+  if (!Number.isFinite(price)) price = safeBase;
+
+  if (svc == null) return Notify.toast('Service', 'Pick a service first.', 'error');
+  if (price <= 0) return Notify.toast('Price', 'This service has no cost set. Ask admin to set the service cost.', 'error');
 
   if (priority) {
-    const extra = price - base;
-    if (!confirm(`Priority booking total: ₹${price}${extra > 0 ? ` (₹${extra} more than the normal ₹${base})` : ''}.\n\nProceed?`)) return;
+    const extra = price - safeBase;
+    if (!confirm(`Priority booking total: ₹${price}${extra > 0 ? ` (₹${extra} more than the normal ₹${safeBase})` : ''}.\n\nProceed?`)) return;
   }
 
   const booking = createBooking({
@@ -530,14 +536,16 @@ async function submitBooking(priority) {
 
   btn.disabled = true; btn.textContent = 'Processing…';
   try {
-    await Data.write(COLLECTION.BOOKINGS, booking);
-    await Lifecycle.pay(booking);
+    // Payment first: pay() captures payment AND writes the PAID booking. We do
+    // NOT pre-write the unpaid booking, so a failed payment leaves no orphaned
+    // unpaid record.
+    await Lifecycle.pay(booking);                             // CREATED -> PAID (+write)
     Notify.toast('Payment received', 'Alerting nearby caregivers…', 'success');
     const { notified } = await Lifecycle.broadcast(booking, state.caregivers, booking.radiusKm);
     state.activeBookingId = booking.id;
     Notify.toast(priority ? 'Priority request sent' : 'Request sent', `${notified.length} caregiver(s) alerted`, 'info');
   } catch (e) {
-    Notify.toast('Booking failed', e.message, 'error');
+    Notify.toast('Booking failed', e.message || 'Payment could not be completed.', 'error');
   } finally {
     btn.disabled = false; btn.textContent = btnLabel;
   }
