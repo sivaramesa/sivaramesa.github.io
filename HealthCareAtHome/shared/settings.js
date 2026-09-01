@@ -29,7 +29,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
   matchLocationMode: 'gps',
   // Admin-configurable cancellation reason codes (an "Other" free-text option
   // is always offered by the apps in addition to these).
-  cancelReasons: ['No Show of Caregiver', 'Client requested', 'Priority changes']
+  cancelReasons: ['No Show of Caregiver', 'Client requested', 'Priority changes'],
+  // Admin dashboard: an accepted-but-not-started booking whose scheduled time is
+  // within this many minutes (or already past) is highlighted as at-risk.
+  startAlertMinutes: 30
 });
 
 /**

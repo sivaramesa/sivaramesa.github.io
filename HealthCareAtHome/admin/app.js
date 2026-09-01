@@ -48,6 +48,9 @@ function boot() {
     renderDashboard(); renderPayments();
   });
 
+  // keep the time-based at-risk highlight fresh as the clock advances
+  setInterval(() => { if (state.bookings.length) renderDashboard(); }, 60000);
+
   // default report window = today
   setToday();
 }
@@ -85,6 +88,7 @@ function wireSettings() {
     $('priorityMode').value = s.priorityMode || 'multiplier';
     $('priorityValue').value = s.priorityValue ?? 1.5;
     if ($('matchLocationMode')) $('matchLocationMode').value = s.matchLocationMode || 'gps';
+    if ($('startAlertMinutes')) $('startAlertMinutes').value = s.startAlertMinutes ?? 30;
     if ($('cancelReasons')) $('cancelReasons').value = (s.cancelReasons || []).join('\n');
   });
 
@@ -107,11 +111,12 @@ function wireSettings() {
       bookingLeadHours: Math.max(0, Number($('leadHours').value) || 0),
       priorityMode: $('priorityMode').value,
       priorityValue: Math.max(0, Number($('priorityValue').value) || 0),
-      matchLocationMode: ($('matchLocationMode') && $('matchLocationMode').value) || 'gps'
+      matchLocationMode: ($('matchLocationMode') && $('matchLocationMode').value) || 'gps',
+      startAlertMinutes: Math.max(1, Number($('startAlertMinutes').value) || 30)
     };
     try {
       await Settings.update(patch);
-      $('priorityStatus').textContent = `Saved · lead ${patch.bookingLeadHours}h · priority ${patch.priorityMode} ${patch.priorityValue} · match ${patch.matchLocationMode}`;
+      $('priorityStatus').textContent = `Saved · lead ${patch.bookingLeadHours}h · priority ${patch.priorityMode} ${patch.priorityValue} · match ${patch.matchLocationMode} · start-risk ${patch.startAlertMinutes}m`;
       Notify.toast('Settings saved', 'Booking/priority updated', 'success');
     } catch (e) {
       $('priorityStatus').textContent = 'Save failed: ' + e.message;
@@ -208,6 +213,25 @@ function wireDashboardFilters() {
   });
 }
 
+// Statuses meaning "a caregiver has committed but service has not started yet".
+const NOT_STARTED_STATUSES = [BookingStatus.ACCEPTED, BookingStatus.EN_ROUTE, BookingStatus.ARRIVED];
+
+/**
+ * Is this booking accepted-but-not-started with its scheduled time within the
+ * admin's alert window (or already past)? Returns { atRisk, label, minutesLeft }.
+ */
+function startRiskInfo(b) {
+  if (!NOT_STARTED_STATUSES.includes(b.status) || !b.scheduledAt) return { atRisk: false };
+  const threshold = Number(Settings.current().startAlertMinutes ?? 30);
+  const msLeft = new Date(b.scheduledAt).getTime() - Date.now();
+  const minutesLeft = Math.round(msLeft / 60000);
+  if (msLeft > threshold * 60000) return { atRisk: false, minutesLeft };
+  const label = minutesLeft < 0
+    ? `Overdue ${Math.abs(minutesLeft)}m`
+    : `${minutesLeft}m left`;
+  return { atRisk: true, label, minutesLeft };
+}
+
 function renderDashboard() {
   const active = state.bookings.filter((b) =>
     ![BookingStatus.COMPLETED, BookingStatus.CANCELLED, BookingStatus.EXPIRED].includes(b.status));
@@ -231,9 +255,17 @@ function renderDashboard() {
     if (b.clonedFrom) badges.push('<span class="badge accepted">↻ Rebooked</span>');
     const invitedN = (b.invitedCaregiverIds || []).length;
     if (invitedN) badges.push(`<span class="badge in_service">★ Invited ${invitedN}</span>`);
+
+    // at-risk: accepted (committed) but service not started, and the scheduled
+    // time is within the configured window (or already past) -> admin should act.
+    const risk = startRiskInfo(b);
+    if (risk.atRisk) {
+      badges.push(`<span class="badge cancelled" title="Scheduled ${fmtDateTime(b.scheduledAt)} — not started">⏰ ${risk.label}</span>`);
+    }
+
     const typeCell = badges.length ? badges.join(' ') : '<span class="badge">Normal</span>';
-    // priority tints orange; a clone (non-priority) tints blue
-    const bg = b.priority ? '#fff4e5' : (b.clonedFrom ? '#eef6ff' : '');
+    // at-risk tints red (highest precedence); priority orange; clone blue
+    const bg = risk.atRisk ? '#fde2e1' : (b.priority ? '#fff4e5' : (b.clonedFrom ? '#eef6ff' : ''));
     const rowStyle = bg ? ` style="background:${bg}"` : '';
     const canCancel = ![BookingStatus.COMPLETED, BookingStatus.CANCELLED].includes(b.status);
     return `<tr${rowStyle}>
