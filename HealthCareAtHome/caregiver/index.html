@@ -36,8 +36,10 @@
     <section id="registerView" class="card hidden">
       <h2>Caregiver registration</h2>
       <div class="row"><input id="regForename" placeholder="Forename" /><input id="regSurname" placeholder="Surname" /></div>
-      <label>Date of birth</label>
-      <input id="regDob" type="date" />
+      <div class="row">
+        <select id="regSex"><option value="">Sex…</option><option>Female</option><option>Male</option><option>Other</option></select>
+        <input id="regDob" type="date" />
+      </div>
       <label>Mobile number</label>
       <input id="regPhone" type="tel" placeholder="+91 90000 00000" />
 

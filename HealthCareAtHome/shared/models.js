@@ -132,7 +132,7 @@ export function createClient({
 export function createCaregiver({
   name, phone, specialities = [], lat = null, lng = null,
   status = CaregiverStatus.ACTIVE, // admin quick-add = pre-approved by default
-  surname = '', forename = '', dob = '', photo = null,
+  surname = '', forename = '', sex = '', dob = '', photo = null,
   address = null,             // { address, lat, lng }
   operatingLocation = null,   // { address, lat, lng }
   aadhaar = null,             // { number, verified }
@@ -145,6 +145,7 @@ export function createCaregiver({
     name: displayName,
     surname,
     forename,
+    sex,
     dob,
     phone,
     specialities,        // array of Speciality values

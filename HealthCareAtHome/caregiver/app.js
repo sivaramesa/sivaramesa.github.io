@@ -230,6 +230,7 @@ $('regSubmit').addEventListener('click', async () => {
   const opGeo = $('regSameLocation').checked ? reg.addressGeo : (reg.opGeo || reg.addressGeo);
   const cg = createCaregiver({
     forename, surname, phone, dob,
+    sex: $('regSex').value,
     specialities: [...reg.specs],
     photo: reg.photo,
     address: reg.addressGeo,

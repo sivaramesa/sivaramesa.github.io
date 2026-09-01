@@ -137,8 +137,23 @@
       </div>
       <div class="card">
         <h2>Caregivers (public profiles)</h2>
-        <div class="scroll"><table>
-          <thead><tr><th>Name</th><th>Phone</th><th>Specialities</th><th>Availability</th><th>Rating</th><th>Access code</th><th></th></tr></thead>
+        <div class="row">
+          <input id="fltName" placeholder="Name contains…" />
+          <select id="fltSpec"><option value="">Any speciality</option></select>
+          <select id="fltSex"><option value="">Any sex</option><option>Female</option><option>Male</option><option>Other</option></select>
+        </div>
+        <div class="row" style="margin-top:8px;align-items:end">
+          <div><label style="margin:0">Within (km)</label><input id="fltKm" type="number" min="1" placeholder="e.g. 10" /></div>
+          <input id="fltGeoAddr" placeholder="From address / area" />
+          <button id="fltGeoBtn" class="btn secondary small" style="max-width:120px">Set point</button>
+        </div>
+        <p id="fltGeoStatus" class="muted"></p>
+        <div class="row" style="margin-top:4px">
+          <span id="fltCount" class="muted"></span>
+          <button id="fltClear" class="btn secondary small" style="max-width:110px">Clear</button>
+        </div>
+        <div class="scroll" style="margin-top:8px"><table>
+          <thead><tr><th>Name</th><th>Sex</th><th>Phone</th><th>Specialities</th><th>Availability</th><th>Distance</th><th>Rating</th><th>Access code</th><th></th></tr></thead>
           <tbody id="cgRows"></tbody>
         </table></div>
       </div>

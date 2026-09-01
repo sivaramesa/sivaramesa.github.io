@@ -17,10 +17,13 @@ import { Notify } from '../shared/notify.js';
 import { Settings } from '../shared/settings.js';
 import { registerWithUpdates } from '../shared/pwa-update.js';
 import { Services, createService, DEFAULT_COMMISSION_PCT, commissionFractionFor } from '../shared/services-master.js';
+import { distanceKm } from '../shared/geo.js';
+import { geocode } from '../shared/maps.js';
 
 const $ = (id) => document.getElementById(id);
 
 const state = { clients: [], caregivers: [], bookings: [], services: [] };
+const cgFilter = { name: '', spec: '', sex: '', km: null, point: null }; // point: {lat,lng}
 
 function boot() {
   registerServiceWorker();
@@ -30,6 +33,7 @@ function boot() {
   populateSpecPicker();
   wireSettings();
   wireServices();
+  wireCaregiverFilters();
 
   Sync.subscribe(COLLECTION.CLIENTS, (list) => { state.clients = list; renderClients(); renderDashboard(); });
   Sync.subscribe(COLLECTION.CAREGIVERS, (list) => { state.caregivers = list; renderCaregivers(); renderRegistrations(); renderDashboard(); });
@@ -299,15 +303,45 @@ function resizeImageToDataUrl(file, maxSize, quality) {
 
 function renderCaregivers() {
   // main table shows active/approved caregivers (registrations live on their own tab)
-  const active = state.caregivers.filter((c) => (c.status || CaregiverStatus.ACTIVE) !== CaregiverStatus.REGISTERED);
-  $('cgRows').innerHTML = active.map((c) => `<tr>
-    <td>${c.name}</td><td>${c.phone}</td>
+  let list = state.caregivers.filter((c) => (c.status || CaregiverStatus.ACTIVE) !== CaregiverStatus.REGISTERED);
+
+  // apply filters
+  const f = cgFilter;
+  if (f.name) {
+    const q = f.name.toLowerCase();
+    list = list.filter((c) => (c.name || '').toLowerCase().includes(q));
+  }
+  if (f.spec) list = list.filter((c) => (c.specialities || []).includes(f.spec));
+  if (f.sex) list = list.filter((c) => (c.sex || '') === f.sex);
+
+  // annotate distance from the chosen point (if set)
+  const withDist = list.map((c) => ({
+    cg: c,
+    dist: f.point ? distanceKm(c.location, f.point) : null
+  }));
+  let filtered = withDist;
+  if (f.point && f.km) {
+    filtered = withDist.filter((x) => isFinite(x.dist) && x.dist <= f.km);
+  }
+  // nearest first when a point is set
+  if (f.point) filtered.sort((a, b) => (a.dist ?? Infinity) - (b.dist ?? Infinity));
+
+  $('fltCount').textContent = `${filtered.length} caregiver(s)`;
+
+  $('cgRows').innerHTML = filtered.map(({ cg: c, dist }) => {
+    const distTxt = f.point ? (isFinite(dist) ? `${dist.toFixed(1)} km` : 'n/a') : '—';
+    return `<tr>
+    <td>${c.name}</td>
+    <td>${c.sex || '—'}</td>
+    <td>${c.phone}</td>
     <td>${(c.specialities || []).map(labelize).join(', ')}</td>
     <td><span class="badge ${c.availability === Availability.AVAILABLE ? 'in_service' : c.availability === Availability.ON_SERVICE ? 'accepted' : 'cancelled'}">${labelize(c.availability)}</span></td>
+    <td>${distTxt}</td>
     <td>★ ${c.rating || 'new'} (${c.ratingCount || 0})</td>
     <td class="codes">${c.accessCode || '—'}</td>
     <td><button class="btn danger small" data-del-cg="${c.id}">Delete</button></td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
 
   $('cgRows').querySelectorAll('[data-del-cg]').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -317,6 +351,45 @@ function renderCaregivers() {
       await Data.remove(COLLECTION.CAREGIVERS, c.id);
       Notify.toast('Caregiver deleted', c.name, 'success');
     });
+  });
+}
+
+// ── caregiver directory filters ───────────────────────────────────────────────
+function wireCaregiverFilters() {
+  // populate the speciality filter from the enum
+  $('fltSpec').innerHTML = '<option value="">Any speciality</option>' +
+    Object.values(Speciality).map((s) => `<option value="${s}">${labelize(s)}</option>`).join('');
+
+  $('fltName').addEventListener('input', () => { cgFilter.name = $('fltName').value.trim(); renderCaregivers(); });
+  $('fltSpec').addEventListener('change', () => { cgFilter.spec = $('fltSpec').value; renderCaregivers(); });
+  $('fltSex').addEventListener('change', () => { cgFilter.sex = $('fltSex').value; renderCaregivers(); });
+  $('fltKm').addEventListener('input', () => { cgFilter.km = Number($('fltKm').value) || null; renderCaregivers(); });
+
+  $('fltGeoBtn').addEventListener('click', async () => {
+    const addr = $('fltGeoAddr').value.trim();
+    if (!addr) return;
+    $('fltGeoStatus').textContent = 'Locating…';
+    try {
+      const res = await geocode(addr);
+      if (res) {
+        cgFilter.point = { lat: res.lat, lng: res.lng };
+        $('fltGeoStatus').textContent = `Point set: ${res.address}`;
+      } else {
+        cgFilter.point = null;
+        $('fltGeoStatus').textContent = 'Could not locate that address.';
+      }
+    } catch (e) {
+      cgFilter.point = null;
+      $('fltGeoStatus').textContent = 'Map unavailable: ' + (e.message || 'could not locate');
+    }
+    renderCaregivers();
+  });
+
+  $('fltClear').addEventListener('click', () => {
+    cgFilter.name = ''; cgFilter.spec = ''; cgFilter.sex = ''; cgFilter.km = null; cgFilter.point = null;
+    $('fltName').value = ''; $('fltSpec').value = ''; $('fltSex').value = '';
+    $('fltKm').value = ''; $('fltGeoAddr').value = ''; $('fltGeoStatus').textContent = '';
+    renderCaregivers();
   });
 }
 
