@@ -261,12 +261,17 @@ export const Lifecycle = {
   },
 
   /**
-   * Clone a (usually just-cancelled) booking into a fresh CREATED request,
-   * carrying over all the request details and stamping clonedFrom = original.id
-   * so the new record is differentiable (like priority).
+   * Clone a (usually just-cancelled) booking into a fresh request, carrying over
+   * all the request details and stamping clonedFrom = original.id so the new
+   * record is differentiable (like priority).
+   *
+   * @param {object} original
+   * @param {object} [opts] { rebook } — when rebook is true, the new booking
+   *   retains the original's paid status (payment carried forward, status PAID,
+   *   ready to broadcast) instead of starting as an unpaid CREATED request.
    */
-  cloneBooking(original) {
-    return createBooking({
+  cloneBooking(original, opts = {}) {
+    const fresh = createBooking({
       clientId: original.clientId,
       speciality: original.speciality,
       location: original.location,
@@ -280,5 +285,22 @@ export const Lifecycle = {
       priority: original.priority,
       clonedFrom: original.id
     });
+
+    // Rebook: the client already paid on the original — carry that forward so
+    // the new request is already "booked & paid" (PAID, ready to broadcast).
+    if (opts.rebook && original.payment && (original.payment.status === 'paid' || original.payment.status === 'refunded')) {
+      fresh.payment = {
+        ...fresh.payment,
+        status: 'paid',
+        inTxnId: original.payment.inTxnId || null,
+        paidAt: original.payment.paidAt || nowIso()
+      };
+      fresh.status = BookingStatus.PAID;
+      fresh.history = [
+        { status: BookingStatus.CREATED, at: fresh.createdAt },
+        { status: BookingStatus.PAID, at: nowIso(), by: 'admin-rebook' }
+      ];
+    }
+    return fresh;
   }
 };

@@ -113,6 +113,23 @@ describe('Lifecycle.cloneBooking', () => {
     expect(clone.price).toBe(orig.price);
     expect(clone.payment.status).toBe('unpaid'); // fresh, not carried over
   });
+
+  it('rebook: carries paid status forward (PAID, ready to broadcast)', () => {
+    const orig = paidBooking(); // payment.status 'paid'
+    const clone = Lifecycle.cloneBooking(orig, { rebook: true });
+    expect(clone.clonedFrom).toBe(orig.id);
+    expect(clone.status).toBe(BookingStatus.PAID);
+    expect(clone.payment.status).toBe('paid');
+    expect(clone.history.map((h) => h.status)).toEqual([BookingStatus.CREATED, BookingStatus.PAID]);
+  });
+
+  it('rebook after refund (post-cancel) still results in a PAID rebooked request', () => {
+    const orig = paidBooking();
+    orig.payment.status = 'refunded';   // state after Lifecycle.cancel refunded it
+    const clone = Lifecycle.cloneBooking(orig, { rebook: true });
+    expect(clone.status).toBe(BookingStatus.PAID);
+    expect(clone.payment.status).toBe('paid');
+  });
 });
 
 describe('Lifecycle.markArrived — single write, folds location', () => {

@@ -378,6 +378,7 @@ function cancelBookingFlow(id) {
   populateReasonSelect($('crReason'));
   $('crOtherWrap').classList.add('hidden');
   $('crOther').value = '';
+  $('crClone').checked = false;
   $('cancelReasonModal').classList.remove('hidden');
 }
 
@@ -396,14 +397,15 @@ function wireCancelReasonModal() {
     const isOther = code === '__other__';
     const reason = isOther ? $('crOther').value.trim() : code;
     if (isOther && !reason) return Notify.toast('Reason needed', 'Please specify the reason.', 'error');
+    const doClone = $('crClone').checked;
     $('cancelReasonModal').classList.add('hidden');
     try {
       const { revision } = await Lifecycle.cancel(b, reason, { by: 'admin', reasonCode: isOther ? 'Other' : code });
-      const clone = confirm('Cancelled. Clone a new request from these details?\n\nOK = Yes (create a new booking)\nCancel = No (keep only the cancellation)');
-      if (clone) {
-        const fresh = Lifecycle.cloneBooking(b);
+      if (doClone) {
+        // Rebook: carry the original paid status forward (already booked & paid).
+        const fresh = Lifecycle.cloneBooking(b, { rebook: true });
         await Data.write(COLLECTION.BOOKINGS, fresh);
-        Notify.toast('Rebooked', `New request ${fresh.id.slice(-6)} created from ${b.id.slice(-6)}.`, 'success');
+        Notify.toast('Rebooked', `New request ${fresh.id.slice(-6)} created (${labelize(fresh.status)}) from ${b.id.slice(-6)}.`, 'success');
       } else {
         Notify.toast('Booking cancelled',
           revision && revision.type === 'refund' ? `Refund of ₹${revision.amount} recorded.` : 'Payment revision recorded.',
