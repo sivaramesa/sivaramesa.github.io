@@ -158,6 +158,13 @@
           <label style="margin-top:8px"><input type="checkbox" id="ebPriority" /> Priority booking</label>
           <label>Status (override)</label>
           <select id="ebStatus"></select>
+          <label>Payment status</label>
+          <select id="ebPayment">
+            <option value="unpaid">Unpaid</option>
+            <option value="paid">Paid</option>
+            <option value="released">Released</option>
+            <option value="refunded">Refunded</option>
+          </select>
           <div class="row" style="margin-top:14px">
             <button id="ebSave" class="btn ok">Save changes</button>
             <button id="ebCancel" class="btn secondary">Cancel</button>

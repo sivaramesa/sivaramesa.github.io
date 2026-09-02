@@ -213,19 +213,27 @@ export const Lifecycle = {
 
   /**
    * Cancel a booking. Records a payment revision:
-   *   - if the client had paid, a refund txn is created and payment.status -> 'refunded'
-   *   - otherwise the (unpaid) payment is simply marked 'cancelled'
+   *   - paid + transferToRebook: the captured amount is CARRIED FORWARD to a
+   *       rebooked booking (no cash refund) -> payment.status 'transferred'
+   *   - paid (normal): a refund txn is created -> payment.status 'refunded'
+   *   - otherwise the (unpaid) payment is simply left / recorded as a void entry
    * Also frees any assigned caregiver (availability -> available).
    * @param {object} booking
    * @param {string} reason
-   * @param {object} [opts] { by:'client'|'admin' }
+   * @param {object} [opts] { by:'client'|'admin', reasonCode, transferToRebook, toBookingId }
    */
   async cancel(booking, reason = '', opts = {}) {
     const by = opts.by || 'client';
     const reasonCode = opts.reasonCode || reason || '';
+    const wasPaid = booking.payment && (booking.payment.status === 'paid' || booking.payment.status === 'released');
     let revision = null;
 
-    if (booking.payment && booking.payment.status === 'paid') {
+    if (wasPaid && opts.transferToRebook) {
+      // money moves to the new booking instead of being refunded out
+      const amount = booking.price || 0;
+      revision = { type: 'transfer', amount, txnId: null, at: nowIso(), by, reason, reasonCode, toBookingId: opts.toBookingId || null };
+      booking.payment = { ...booking.payment, status: 'transferred', transferredToBookingId: opts.toBookingId || null, transferredAt: nowIso() };
+    } else if (wasPaid) {
       // reverse the captured charge — a payment revision (refund)
       const txn = await Payments.refund(booking);
       revision = { type: 'refund', amount: txn.amount, txnId: txn.id, at: txn.at, by, reason, reasonCode };
@@ -295,14 +303,17 @@ export const Lifecycle = {
       clonedFrom: original.id
     });
 
-    // Rebook: the client already paid on the original — carry that forward so
-    // the new request is already "booked & paid" (PAID, ready to broadcast).
-    if (opts.rebook && original.payment && (original.payment.status === 'paid' || original.payment.status === 'refunded')) {
+    // Rebook: the client already paid on the original — carry that payment
+    // forward (mapped from the original) so the new request is "booked & paid"
+    // (PAID, ready to broadcast) rather than paid out of thin air.
+    const origPaid = original.payment && ['paid', 'released', 'refunded', 'transferred'].includes(original.payment.status);
+    if (opts.rebook && origPaid) {
       fresh.payment = {
         ...fresh.payment,
         status: 'paid',
         inTxnId: original.payment.inTxnId || null,
-        paidAt: original.payment.paidAt || nowIso()
+        paidAt: original.payment.paidAt || nowIso(),
+        paymentFromBookingId: original.id   // where this paid status came from
       };
       fresh.status = BookingStatus.PAID;
       fresh.history = [

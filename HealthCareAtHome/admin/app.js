@@ -400,27 +400,35 @@ function wireCancelReasonModal() {
     const doClone = $('crClone').checked;
     $('cancelReasonModal').classList.add('hidden');
     try {
-      const { revision } = await Lifecycle.cancel(b, reason, { by: 'admin', reasonCode: isOther ? 'Other' : code });
       if (doClone) {
-        // Rebook: carry the original paid status forward (already booked & paid).
-        // If the original time is past, push it to now + the admin lead hours so
-        // the new caregiver isn't handed an overdue appointment.
+        // Build the rebook FIRST (needs the original's still-paid status), then
+        // cancel the original as a TRANSFER (money maps to the new booking, no
+        // cash refund). If the original time is past, push it forward.
         const leadHours = Number(Settings.current().bookingLeadHours ?? 4);
         const minScheduledAt = new Date(Date.now() + leadHours * 3600 * 1000).toISOString();
         const fresh = Lifecycle.cloneBooking(b, { rebook: true, minScheduledAt });
+        const wasPaid = b.payment && (b.payment.status === 'paid' || b.payment.status === 'released');
+
+        await Lifecycle.cancel(b, reason, {
+          by: 'admin', reasonCode: isOther ? 'Other' : code,
+          transferToRebook: wasPaid, toBookingId: fresh.id
+        });
         await Data.write(COLLECTION.BOOKINGS, fresh);
-        // broadcast it so it's an open request, then open the link-caregiver
-        // screen for the new booking so admin can dispatch immediately.
+
+        // broadcast the rebook so it's an open request, then open link-caregiver
         try {
           const mode = Settings.current().matchLocationMode || 'gps';
           await Lifecycle.broadcast(fresh, state.caregivers, fresh.radiusKm, mode);
         } catch (_) { /* broadcast is best-effort; invite modal still works */ }
-        Notify.toast('Rebooked', `New request ${fresh.id.slice(-6)} created from ${b.id.slice(-6)}.`, 'success');
-        // ensure our local list has the up-to-date fresh booking before opening the modal
+        Notify.toast('Rebooked',
+          wasPaid ? `New request ${fresh.id.slice(-6)} — payment carried over from ${b.id.slice(-6)}.`
+                  : `New request ${fresh.id.slice(-6)} created from ${b.id.slice(-6)}.`,
+          'success');
         const idx = state.bookings.findIndex((x) => x.id === fresh.id);
         if (idx >= 0) state.bookings[idx] = fresh; else state.bookings.unshift(fresh);
         openInviteModal(fresh.id);
       } else {
+        const { revision } = await Lifecycle.cancel(b, reason, { by: 'admin', reasonCode: isOther ? 'Other' : code });
         Notify.toast('Booking cancelled',
           revision && revision.type === 'refund' ? `Refund of ₹${revision.amount} recorded.` : 'Payment revision recorded.',
           'success');
@@ -458,6 +466,7 @@ function openEditBooking(id) {
   $('ebPrice').value = b.price || 0;
   $('ebRadius').value = b.radiusKm || CONFIG_defaultRadius();
   $('ebPriority').checked = !!b.priority;
+  $('ebPayment').value = (b.payment && b.payment.status) || 'unpaid';
 
   $('editBookingModal').classList.remove('hidden');
 }
@@ -481,6 +490,17 @@ guardedClick('ebSave', async () => {
   const b = state.bookings.find((x) => x.id === _editingBookingId);
   if (!b) return;
   const svc = state.services.find((s) => s.key === $('ebSpeciality').value);
+  const newStatus = $('ebStatus').value;
+  let payStatus = $('ebPayment').value;
+  // convenience: if the booking is moved to 'paid' but payment was left unpaid,
+  // reflect it as paid so the payment column matches the booking status.
+  if (newStatus === BookingStatus.PAID && payStatus === 'unpaid') payStatus = 'paid';
+  const payment = {
+    ...b.payment,
+    status: payStatus,
+    // stamp paidAt when transitioning into paid and none recorded yet
+    paidAt: (payStatus === 'paid' && !(b.payment && b.payment.paidAt)) ? nowIso() : (b.payment && b.payment.paidAt) || null
+  };
   const updated = {
     ...b,
     speciality: $('ebSpeciality').value,
@@ -490,9 +510,10 @@ guardedClick('ebSave', async () => {
     price: Number($('ebPrice').value) || 0,
     radiusKm: Number($('ebRadius').value) || b.radiusKm,
     priority: $('ebPriority').checked,
-    status: $('ebStatus').value,
+    status: newStatus,
+    payment,
     updatedAt: nowIso(),
-    history: [...(b.history || []), { status: $('ebStatus').value, at: nowIso(), by: 'admin-edit' }]
+    history: [...(b.history || []), { status: newStatus, at: nowIso(), by: 'admin-edit' }]
   };
   try {
     await Data.write(COLLECTION.BOOKINGS, updated);

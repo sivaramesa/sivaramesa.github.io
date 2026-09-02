@@ -87,6 +87,30 @@ describe('Lifecycle.cancel — paid booking', () => {
   });
 });
 
+describe('Lifecycle.cancel — transfer to rebook (no refund)', () => {
+  beforeEach(resetStore);
+  it('records a transfer revision and marks payment transferred, no refund', async () => {
+    const b = paidBooking();
+    store.bookings[b.id] = b;
+    const { revision } = await Lifecycle.cancel(b, 'Priority changes', {
+      by: 'admin', reasonCode: 'Priority changes', transferToRebook: true, toBookingId: 'bk_new'
+    });
+    expect(revision.type).toBe('transfer');
+    expect(revision.toBookingId).toBe('bk_new');
+    expect(b.payment.status).toBe('transferred');
+    expect(b.payment.transferredToBookingId).toBe('bk_new');
+    // no refund txn recorded
+    expect(b.payment.refundTxnId).toBeUndefined();
+  });
+
+  it('clone rebook links paymentFromBookingId back to the original', () => {
+    const orig = paidBooking();
+    const clone = Lifecycle.cloneBooking(orig, { rebook: true });
+    expect(clone.payment.paymentFromBookingId).toBe(orig.id);
+    expect(clone.payment.status).toBe('paid');
+  });
+});
+
 describe('Lifecycle.cancel — unpaid booking', () => {
   beforeEach(resetStore);
   it('records a void revision, no refund', async () => {
