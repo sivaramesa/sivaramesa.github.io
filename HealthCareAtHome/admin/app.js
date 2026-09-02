@@ -405,7 +405,17 @@ function wireCancelReasonModal() {
         // Rebook: carry the original paid status forward (already booked & paid).
         const fresh = Lifecycle.cloneBooking(b, { rebook: true });
         await Data.write(COLLECTION.BOOKINGS, fresh);
-        Notify.toast('Rebooked', `New request ${fresh.id.slice(-6)} created (${labelize(fresh.status)}) from ${b.id.slice(-6)}.`, 'success');
+        // broadcast it so it's an open request, then open the link-caregiver
+        // screen for the new booking so admin can dispatch immediately.
+        try {
+          const mode = Settings.current().matchLocationMode || 'gps';
+          await Lifecycle.broadcast(fresh, state.caregivers, fresh.radiusKm, mode);
+        } catch (_) { /* broadcast is best-effort; invite modal still works */ }
+        Notify.toast('Rebooked', `New request ${fresh.id.slice(-6)} created from ${b.id.slice(-6)}.`, 'success');
+        // ensure our local list has the up-to-date fresh booking before opening the modal
+        const idx = state.bookings.findIndex((x) => x.id === fresh.id);
+        if (idx >= 0) state.bookings[idx] = fresh; else state.bookings.unshift(fresh);
+        openInviteModal(fresh.id);
       } else {
         Notify.toast('Booking cancelled',
           revision && revision.type === 'refund' ? `Refund of ₹${revision.amount} recorded.` : 'Payment revision recorded.',
@@ -703,8 +713,9 @@ function wireCaregiverFilters() {
 function openInviteModal(id) {
   const b = state.bookings.find((x) => x.id === id);
   if (!b) return;
-  if (b.status !== BookingStatus.BROADCAST) {
-    return Notify.toast('Not open', 'Only open (broadcast) bookings can be targeted.', 'error');
+  // open (broadcast) requests, or a paid-but-not-yet-broadcast rebook, can be targeted
+  if (![BookingStatus.BROADCAST, BookingStatus.PAID].includes(b.status)) {
+    return Notify.toast('Not open', 'Only open (broadcast) or freshly paid bookings can be targeted.', 'error');
   }
   inviteState.bookingId = id;
   inviteState.radiusKm = b.radiusKm || 10;
