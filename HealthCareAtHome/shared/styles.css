@@ -108,6 +108,11 @@ body {
 }
 .card h2 { margin: 0 0 12px; font-size: 15px; }
 
+/* Links default to the accent colour (readable in both modes); components that
+   need a different colour (logoff pill, landing cards) override locally. */
+a { color: var(--brand); }
+a:hover { color: var(--brand-dark); }
+
 label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
 input, select, textarea {
   width: 100%; padding: 11px 12px; font-size: 15px;

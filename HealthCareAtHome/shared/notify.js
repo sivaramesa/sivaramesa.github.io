@@ -34,9 +34,11 @@ export const Notify = {
   toast(title, body, kind = 'info') {
     const host = ensureToastHost();
     const el = document.createElement('div');
-    const color = kind === 'error' ? '#c62828' : kind === 'success' ? '#2e7d32' : '#1a73e8';
+    // accent by kind; surface + text from the active theme so it stays legible
+    const color = kind === 'error' ? 'var(--danger)' : kind === 'success' ? 'var(--ok)' : 'var(--brand)';
     el.style.cssText =
-      `background:#fff;border-left:4px solid ${color};box-shadow:0 2px 10px rgba(0,0,0,.15);` +
+      `background:var(--card,#fff);color:var(--ink,#1f2933);border:1px solid var(--line,#e5e7eb);` +
+      `border-left:4px solid ${color};box-shadow:var(--shadow,0 2px 10px rgba(0,0,0,.15));` +
       'border-radius:8px;padding:10px 14px;font:14px system-ui,sans-serif;animation:hcfade .2s;';
     el.innerHTML = `<strong style="display:block;margin-bottom:2px">${title}</strong><span>${body || ''}</span>`;
     host.appendChild(el);

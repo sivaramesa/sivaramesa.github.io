@@ -34,6 +34,12 @@ export const Theme = {
     const el = document.documentElement;
     el.setAttribute('data-mode', this.mode());
     el.setAttribute('data-theme', this.theme());
+    // keep the mobile browser chrome (address bar) in sync with the accent
+    try {
+      const accent = (THEMES.find((t) => t.key === this.theme()) || THEMES[0]).color;
+      let meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', accent);
+    } catch (_) {}
   },
 
   setMode(mode) {
