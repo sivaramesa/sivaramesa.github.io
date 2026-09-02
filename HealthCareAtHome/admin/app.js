@@ -316,7 +316,7 @@ function renderDashboard() {
       <td>${labelize((b.payment && b.payment.status) || 'unpaid')}</td>
       <td style="white-space:nowrap">
         <button class="btn small" data-edit-bk="${b.id}">Edit</button>
-        ${b.status === BookingStatus.BROADCAST ? `<button class="btn small" data-invite-bk="${b.id}">Find caregivers</button>` : ''}
+        ${[BookingStatus.BROADCAST, BookingStatus.PAID].includes(b.status) ? `<button class="btn small" data-invite-bk="${b.id}">Find caregivers</button>` : ''}
         ${canCancel ? `<button class="btn secondary small" data-cancel-bk="${b.id}">Cancel</button>` : ''}
         <button class="btn danger small" data-del-bk="${b.id}">Delete</button>
       </td>
