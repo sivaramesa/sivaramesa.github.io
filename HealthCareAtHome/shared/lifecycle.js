@@ -271,6 +271,15 @@ export const Lifecycle = {
    *   ready to broadcast) instead of starting as an unpaid CREATED request.
    */
   cloneBooking(original, opts = {}) {
+    // Keep the original scheduled time — but if it's already in the past, shift
+    // it forward so the new caregiver isn't handed an overdue appointment.
+    // The caller may pass a resolved future time (now + lead hours) via
+    // opts.minScheduledAt; otherwise we fall back to "now".
+    let scheduledAt = original.scheduledAt;
+    if (scheduledAt && new Date(scheduledAt).getTime() < Date.now()) {
+      scheduledAt = opts.minScheduledAt || nowIso();
+    }
+
     const fresh = createBooking({
       clientId: original.clientId,
       speciality: original.speciality,
@@ -279,7 +288,7 @@ export const Lifecycle = {
       radiusKm: original.radiusKm,
       serviceId: original.serviceId,
       commissionPct: original.commissionPct,
-      scheduledAt: original.scheduledAt,
+      scheduledAt,
       recipients: original.recipients,
       unitPrice: original.unitPrice,
       priority: original.priority,

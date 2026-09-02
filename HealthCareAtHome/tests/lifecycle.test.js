@@ -35,7 +35,8 @@ function resetStore() {
 function paidBooking(overrides = {}) {
   const b = createBooking({
     clientId: 'c1', speciality: 'nursing', location: { lat: 13, lng: 80 },
-    price: 500, radiusKm: 5, scheduledAt: '2026-09-01T10:00:00.000Z',
+    price: 500, radiusKm: 5,
+    scheduledAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(), // future by default
     priority: true, unitPrice: 250, recipients: [{ name: 'Self' }], ...overrides
   });
   b.status = BookingStatus.BROADCAST;
@@ -129,6 +130,29 @@ describe('Lifecycle.cloneBooking', () => {
     const clone = Lifecycle.cloneBooking(orig, { rebook: true });
     expect(clone.status).toBe(BookingStatus.PAID);
     expect(clone.payment.status).toBe('paid');
+  });
+
+  it('keeps a FUTURE original scheduled time unchanged', () => {
+    const future = new Date(Date.now() + 3 * 3600 * 1000).toISOString();
+    const orig = paidBooking({ scheduledAt: future });
+    const clone = Lifecycle.cloneBooking(orig);
+    expect(clone.scheduledAt).toBe(future);
+  });
+
+  it('shifts a PAST original scheduled time forward to minScheduledAt (option b)', () => {
+    const past = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+    const min = new Date(Date.now() + 4 * 3600 * 1000).toISOString();
+    const orig = paidBooking({ scheduledAt: past });
+    const clone = Lifecycle.cloneBooking(orig, { minScheduledAt: min });
+    expect(clone.scheduledAt).toBe(min);
+    expect(new Date(clone.scheduledAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('shifts a PAST time to now when no minScheduledAt provided', () => {
+    const past = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+    const orig = paidBooking({ scheduledAt: past });
+    const clone = Lifecycle.cloneBooking(orig);
+    expect(new Date(clone.scheduledAt).getTime()).toBeGreaterThanOrEqual(Date.now() - 2000);
   });
 });
 

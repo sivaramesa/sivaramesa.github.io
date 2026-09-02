@@ -403,7 +403,11 @@ function wireCancelReasonModal() {
       const { revision } = await Lifecycle.cancel(b, reason, { by: 'admin', reasonCode: isOther ? 'Other' : code });
       if (doClone) {
         // Rebook: carry the original paid status forward (already booked & paid).
-        const fresh = Lifecycle.cloneBooking(b, { rebook: true });
+        // If the original time is past, push it to now + the admin lead hours so
+        // the new caregiver isn't handed an overdue appointment.
+        const leadHours = Number(Settings.current().bookingLeadHours ?? 4);
+        const minScheduledAt = new Date(Date.now() + leadHours * 3600 * 1000).toISOString();
+        const fresh = Lifecycle.cloneBooking(b, { rebook: true, minScheduledAt });
         await Data.write(COLLECTION.BOOKINGS, fresh);
         // broadcast it so it's an open request, then open the link-caregiver
         // screen for the new booking so admin can dispatch immediately.
