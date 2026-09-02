@@ -1,9 +1,18 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-mode="dark" data-theme="blue">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#1a73e8" />
+  <script>
+    /* apply saved theme before first paint (no flash) */
+    try {
+      var m = localStorage.getItem('hc_mode') || 'dark';
+      var t = localStorage.getItem('hc_theme') || 'blue';
+      document.documentElement.setAttribute('data-mode', m);
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  </script>
   <title>HomeCare — Client</title>
   <link rel="icon" href="../shared/icons/icon-192.png" type="image/png" />
   <link rel="apple-touch-icon" href="../shared/icons/icon-192.png" />
@@ -111,7 +120,7 @@
       <label>Match radius (km)</label>
       <input id="radiusKm" type="number" min="1" value="15" />
 
-      <div class="card" style="background:#eef6ff;margin-top:12px">
+      <div class="card row-clone" style="margin-top:12px">
         <div style="display:flex;justify-content:space-between">
           <span id="costBreakdown" class="muted"></span>
           <strong id="costTotal">₹0</strong>
@@ -141,11 +150,11 @@
         <span class="muted" style="font-size:12px"> — allowed until a caregiver accepts</span>
       </div>
 
-      <div id="availabilityBox" class="card hidden" style="background:#eef6ff">
+      <div id="availabilityBox" class="card hidden row-clone">
         <div id="availabilityLine"></div>
       </div>
 
-      <div id="caregiverBox" class="card hidden" style="background:#f8fafc">
+      <div id="caregiverBox" class="card hidden row-subtle">
         <div style="display:flex;gap:12px;align-items:center">
           <img id="cgPhoto" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;background:#e5e7eb;display:none" />
           <div>

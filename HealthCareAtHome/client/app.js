@@ -23,6 +23,7 @@ import { Services } from '../shared/services-master.js';
 import { Aadhaar, isValidAadhaarFormat } from '../shared/aadhaar.js';
 import { compressPhoto } from '../shared/imaging.js';
 import { guardedClick } from '../shared/dom.js';
+import { Theme } from '../shared/theme.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -43,6 +44,7 @@ const state = {
 // ── boot ──────────────────────────────────────────────────────────────────
 async function boot() {
   Auth.use('client');   // scope the session to this role (same-device safe)
+  Theme.mountControl();
   registerServiceWorker();
   Sync.start();
   Sync.onStatus(renderSyncDot);
@@ -166,8 +168,7 @@ function addMemberCard() {
   regState.members.push(m);
 
   const card = document.createElement('div');
-  card.className = 'card';
-  card.style.background = '#f8fafc';
+  card.className = 'card row-subtle';
   card.dataset.mid = mid;
   card.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center">

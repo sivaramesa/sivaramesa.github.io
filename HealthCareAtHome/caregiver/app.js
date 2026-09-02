@@ -20,6 +20,7 @@ import { registerWithUpdates } from '../shared/pwa-update.js';
 import { Aadhaar, isValidAadhaarFormat } from '../shared/aadhaar.js';
 import { compressPhoto, compressCertificate } from '../shared/imaging.js';
 import { guardedClick, guardOnce } from '../shared/dom.js';
+import { Theme } from '../shared/theme.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -34,6 +35,7 @@ const state = {
 
 async function boot() {
   Auth.use('caregiver');   // scope the session to this role (same-device safe)
+  Theme.mountControl();
   registerServiceWorker();
   Sync.start();
   Sync.onStatus(renderSyncDot);
@@ -384,8 +386,8 @@ function renderQueue() {
     const distTxt = dist != null && isFinite(dist) ? `${dist.toFixed(1)} km away` : 'distance n/a';
     const when = b.scheduledAt ? new Date(b.scheduledAt).toLocaleString() : '';
     const forCount = (b.recipients || []).length;
-    const bg = invited ? '#e8f7ee' : (b.priority ? '#fff4e5' : '#f8fafc');
-    return `<div class="card" style="background:${bg}">
+    const cardClass = invited ? 'row-invite' : (b.priority ? 'row-priority' : 'row-subtle');
+    return `<div class="card ${cardClass}">
       <div style="display:flex;justify-content:space-between">
         <strong>${b.priority ? '⚡ ' : ''}${b.clonedFrom ? '↻ ' : ''}${labelize(b.speciality)}</strong><span>₹${b.price}</span>
       </div>

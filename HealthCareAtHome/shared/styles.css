@@ -1,17 +1,62 @@
-/* styles.css — shared design system for all three HealthCareAtHome PWAs. */
-:root {
-  --brand: #1a73e8;
-  --brand-dark: #1558b0;
-  --ok: #2e7d32;
-  --warn: #ef6c00;
-  --danger: #c62828;
+/* styles.css — shared design system for all three HealthCareAtHome PWAs.
+ *
+ * Theming: two axes controlled by attributes on <html> (set by shared/theme.js):
+ *   data-mode  = "dark" | "light"      -> base surface + text palette
+ *   data-theme = "blue|teal|violet|emerald|rose" -> accent (brand) colour
+ * Default is dark + blue. All colours are variables so every app + the admin
+ * row tints adapt and stay legible in both modes.
+ */
+
+/* ---- base palette by MODE (surfaces + text) --------------------------------- */
+:root, :root[data-mode="dark"] {
+  --bg: #0f141b;
+  --card: #1a212b;
+  --card-2: #222c39;          /* nested/subtle surfaces */
+  --ink: #eef2f7;             /* primary text — high contrast on dark */
+  --muted: #9aa7b6;           /* secondary text, still legible */
+  --line: #303a48;
+  --field-bg: #131a23;        /* input/select background */
+  --field-ink: #eef2f7;       /* input/select text */
+  --on-accent: #ffffff;       /* text on accent-coloured surfaces */
+  --shadow: 0 1px 3px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.4);
+  /* admin/caregiver row tints — deep, prominent on dark */
+  --row-priority: #3a2a12;
+  --row-clone:    #12283a;
+  --row-risk:     #3a1616;
+  --row-invite:   #133226;
+  --row-subtle:   #202a36;
+}
+:root[data-mode="light"] {
   --bg: #f5f7fa;
   --card: #ffffff;
+  --card-2: #f8fafc;
   --ink: #1f2933;
-  --muted: #6b7280;
+  --muted: #5b6674;
   --line: #e5e7eb;
-  --radius: 12px;
+  --field-bg: #ffffff;
+  --field-ink: #1f2933;
+  --on-accent: #ffffff;
   --shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.05);
+  /* light-mode pastel row tints */
+  --row-priority: #fff4e5;
+  --row-clone:    #eef6ff;
+  --row-risk:     #fde2e1;
+  --row-invite:   #e8f7ee;
+  --row-subtle:   #f8fafc;
+}
+
+/* ---- accent (brand) by THEME ------------------------------------------------ */
+:root, :root[data-theme="blue"]    { --brand: #2a7fff; --brand-dark: #1a5fd0; }
+:root[data-theme="teal"]           { --brand: #14a3a3; --brand-dark: #0d7d7d; }
+:root[data-theme="violet"]         { --brand: #7c5cff; --brand-dark: #5f3fe0; }
+:root[data-theme="emerald"]        { --brand: #16a34a; --brand-dark: #0f7a37; }
+:root[data-theme="rose"]           { --brand: #e0457b; --brand-dark: #bd2f61; }
+
+:root {
+  --ok: #2fa84f;
+  --warn: #f08a24;
+  --danger: #ef4444;
+  --radius: 12px;
 }
 
 * { box-sizing: border-box; }
@@ -66,8 +111,14 @@ body {
 label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
 input, select, textarea {
   width: 100%; padding: 11px 12px; font-size: 15px;
-  border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--field-bg); color: var(--field-ink);
 }
+input::placeholder, textarea::placeholder { color: var(--muted); }
+/* Dropdowns: the native popup list often ignores the control colour, so set the
+   option colours explicitly — this is the usual "unreadable dropdown" culprit. */
+select option { background: var(--field-bg); color: var(--field-ink); }
+select:focus, input:focus, textarea:focus { outline: 2px solid var(--brand); outline-offset: 0; }
 /* Checkboxes and radios are not text fields — keep their natural size and let
    the label text sit right next to them (used by the dashboard filters). */
 input[type="checkbox"], input[type="radio"] {
@@ -84,7 +135,8 @@ textarea { min-height: 72px; resize: vertical; }
 .btn:hover { background: var(--brand-dark); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn.is-busy { cursor: progress; }
-.btn.secondary { background: #fff; color: var(--brand); border: 1px solid var(--brand); }
+.btn { color: var(--on-accent); }
+.btn.secondary { background: var(--card); color: var(--brand); border: 1px solid var(--brand); }
 .btn.ok { background: var(--ok); }
 .btn.danger { background: var(--danger); }
 .btn.small { width: auto; padding: 8px 12px; font-size: 13px; }
@@ -137,3 +189,55 @@ th { color: var(--muted); font-weight: 600; }
 .status-dot.red { background: var(--danger); }
 
 @keyframes hcfade { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+/* ---- theme-aware row / card tints (admin dashboard + caregiver queue) ------- */
+.row-priority { background: var(--row-priority) !important; }
+.row-clone    { background: var(--row-clone) !important; }
+.row-risk     { background: var(--row-risk) !important; }
+.row-invite   { background: var(--row-invite) !important; }
+.row-subtle   { background: var(--row-subtle) !important; }
+
+/* ---- theme control in the banner -------------------------------------------- */
+.topbar .theme-btn {
+  background: rgba(255,255,255,.2); color: #fff; border: none; cursor: pointer;
+  width: auto; padding: 5px 10px; border-radius: 999px; font-size: 14px; line-height: 1;
+}
+.topbar .theme-btn:hover { background: rgba(255,255,255,.32); }
+.theme-pop {
+  position: absolute; top: 52px; right: 12px; z-index: 60;
+  background: var(--card); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 12px; box-shadow: var(--shadow); padding: 12px; min-width: 200px;
+}
+.theme-pop .swatches { display: flex; gap: 8px; margin-top: 8px; }
+.theme-pop .swatch {
+  width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+  border: 2px solid transparent;
+}
+.theme-pop .swatch.active { border-color: var(--ink); }
+.theme-pop .mode-row { display: flex; align-items: center; justify-content: space-between; }
+.theme-pop .mode-toggle {
+  background: var(--card-2); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 999px; padding: 6px 12px; cursor: pointer; width: auto; font-size: 13px;
+}
+
+/* ---- mobile responsiveness -------------------------------------------------- */
+.scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 640px) {
+  .container { padding: 12px; }
+  .topbar { gap: 8px; padding: 10px 12px; }
+  .topbar h1 { font-size: 15px; }
+  .topbar .user-chip { max-width: 40%; font-size: 12px; }
+  .topbar .role-tag { display: none; }          /* free up space on small screens */
+  /* stack multi-field rows vertically so inputs aren't cramped */
+  .row { gap: 8px; }
+  .row > * { flex-basis: 100%; }
+  /* tables scroll horizontally rather than overflow the viewport */
+  table { font-size: 12px; }
+  th, td { padding: 6px 8px; }
+  .stat { font-size: 20px; }
+  /* modals: fit small viewports and scroll internally */
+  #editBookingModal > .card, #inviteModal > .card,
+  #cancelReasonModal > .card { max-height: 88vh; overflow: auto; }
+  .theme-pop { right: 8px; left: 8px; min-width: auto; }
+}

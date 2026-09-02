@@ -1,9 +1,17 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-mode="dark" data-theme="blue">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#1a73e8" />
+  <script>
+    try {
+      var m = localStorage.getItem('hc_mode') || 'dark';
+      var t = localStorage.getItem('hc_theme') || 'blue';
+      document.documentElement.setAttribute('data-mode', m);
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  </script>
   <title>HomeCare — Admin</title>
   <link rel="icon" href="../shared/icons/icon-192.png" type="image/png" />
   <link rel="apple-touch-icon" href="../shared/icons/icon-192.png" />

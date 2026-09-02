@@ -20,6 +20,7 @@ import { Services, createService, DEFAULT_COMMISSION_PCT, commissionFractionFor 
 import { distanceKm, caregiverDistanceKm } from '../shared/geo.js';
 import { geocode } from '../shared/maps.js';
 import { guardedClick, guardOnce } from '../shared/dom.js';
+import { Theme } from '../shared/theme.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -43,6 +44,7 @@ function adminIsBusy() {
 }
 
 function boot() {
+  Theme.mountControl();
   registerServiceWorker();
   Sync.start();
   Sync.onStatus(renderSyncDot);
@@ -298,11 +300,10 @@ function renderDashboard() {
     }
 
     const typeCell = badges.length ? badges.join(' ') : '<span class="badge">Normal</span>';
-    // at-risk tints red (highest precedence); priority orange; clone blue
-    const bg = risk.atRisk ? '#fde2e1' : (b.priority ? '#fff4e5' : (b.clonedFrom ? '#eef6ff' : ''));
-    const rowStyle = bg ? ` style="background:${bg}"` : '';
+    // theme-aware row tints: at-risk (red) > priority (orange) > clone (blue)
+    const rowClass = risk.atRisk ? 'row-risk' : (b.priority ? 'row-priority' : (b.clonedFrom ? 'row-clone' : ''));
     const canCancel = ![BookingStatus.COMPLETED, BookingStatus.CANCELLED].includes(b.status);
-    return `<tr${rowStyle}>
+    return `<tr${rowClass ? ` class="${rowClass}"` : ''}>
       <td>${typeCell}</td>
       <td>${fmtDateTime(b.createdAt)}</td>
       <td>${b.scheduledAt ? fmtDateTime(b.scheduledAt) : '—'}</td>
@@ -324,7 +325,7 @@ function renderDashboard() {
    } catch (err) {
      // never let one malformed record blank the whole table
      console.warn('Skipping unrenderable booking', b && b.id, err);
-     return `<tr style="background:#fde2e1"><td colspan="12" class="muted">Booking ${b && b.id ? b.id.slice(-6) : '?'} could not be displayed (${err.message}) — <button class="btn danger small" data-del-bk="${b && b.id}">Delete</button></td></tr>`;
+     return `<tr class="row-risk"><td colspan="12" class="muted">Booking ${b && b.id ? b.id.slice(-6) : '?'} could not be displayed (${err.message}) — <button class="btn danger small" data-del-bk="${b && b.id}">Delete</button></td></tr>`;
    }
   }).join('');
 
@@ -900,7 +901,7 @@ function renderRegistrations() {
     const addr = c.address ? `${c.address.address || '—'}${c.address.lat != null ? ` (${c.address.lat.toFixed(4)}, ${c.address.lng.toFixed(4)})` : ' — no map pin'}` : '—';
     const op = c.operatingLocation ? `${c.operatingLocation.address || '—'}${c.operatingLocation.lat != null ? ` (${c.operatingLocation.lat.toFixed(4)}, ${c.operatingLocation.lng.toFixed(4)})` : ' — no map pin'}` : '—';
     const aadhaar = c.aadhaar ? `${maskAadhaar(c.aadhaar.number)} ${c.aadhaar.verified ? '✓ verified' : '(unverified)'}` : '—';
-    return `<div class="card" style="background:#f8fafc">
+    return `<div class="card row-subtle">
       <div style="display:flex;gap:12px">
         ${photo}
         <div style="flex:1">
