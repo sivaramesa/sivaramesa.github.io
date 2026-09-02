@@ -20,12 +20,13 @@
   <style>
     .tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
     .tabs button { flex:0 0 auto; width:auto; padding:9px 14px; border-radius:999px;
-      border:1px solid var(--line); background:#fff; color:var(--ink); font-weight:600; cursor:pointer; }
-    .tabs button.active { background:var(--brand); color:#fff; border-color:var(--brand); }
+      border:1px solid var(--line); background:var(--card); color:var(--ink); font-weight:600; cursor:pointer; }
+    .tabs button:hover { background:var(--card-2); }
+    .tabs button.active { background:var(--brand); color:var(--on-accent); border-color:var(--brand); }
     .codes { font-family: ui-monospace, monospace; font-size:12px; }
     .scroll { overflow:auto; max-height:60vh; -webkit-overflow-scrolling:touch; }
     .scroll table { min-width:520px; }
-    .scroll thead th { position:sticky; top:0; background:#fff; z-index:1; }
+    .scroll thead th { position:sticky; top:0; background:var(--card); z-index:1; }
   </style>
 </head>
 <body class="admin">

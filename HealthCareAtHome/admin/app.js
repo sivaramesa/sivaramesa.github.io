@@ -893,7 +893,7 @@ function renderRegistrations() {
   $('registrationList').innerHTML = pending.map((c) => {
     const photo = c.photo
       ? `<img src="${c.photo}" alt="" style="width:64px;height:64px;border-radius:8px;object-fit:cover" />`
-      : '<div style="width:64px;height:64px;border-radius:8px;background:#e5e7eb"></div>';
+      : '<div style="width:64px;height:64px;border-radius:8px;background:var(--card-2)"></div>';
     const certs = (c.certificates || []).length
       ? (c.certificates || []).map((ct, i) =>
           `<a href="${ct.dataUrl}" target="_blank" rel="noopener" class="badge" style="margin:2px">📄 ${ct.name || ('Certificate ' + (i + 1))}</a>`).join(' ')
