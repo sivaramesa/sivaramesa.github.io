@@ -1,0 +1,15 @@
+# Flutter / Dart
+**/.dart_tool/
+**/build/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/pubspec.lock
+
+# .NET server build output
+server/**/bin/
+server/**/obj/
+
+# IDE
+.idea/
+*.iml
