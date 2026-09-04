@@ -27,17 +27,24 @@ Future<void> main() async {
   runApp(AdminApp(services: services));
 }
 
+final hcTheme = HcThemeController();
+
 class AdminApp extends StatelessWidget {
   final AppServices services;
   const AdminApp({super.key, required this.services});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'HomeCare — Admin',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorSchemeSeed: const Color(0xFF1A73E8), useMaterial3: true),
-      home: _AdminGate(services: services),
+    return AnimatedBuilder(
+      animation: hcTheme,
+      builder: (context, _) => MaterialApp(
+        title: 'HomeCare — Admin',
+        debugShowCheckedModeBanner: false,
+        theme: hcTheme.light,
+        darkTheme: hcTheme.dark,
+        themeMode: hcTheme.mode,
+        home: _AdminGate(services: services),
+      ),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:hc_core/hc_core.dart';
 
+import '../main.dart';
 import '../services.dart';
 import 'active_job_screen.dart';
 
@@ -120,7 +121,10 @@ class _HomeScreenState extends State<HomeScreen> {
             return Scaffold(
               appBar: AppBar(
                 title: Text('Hi, ${me.name}'),
-                actions: [Padding(padding: const EdgeInsets.all(14), child: Text(_labelize(me.availability)))],
+                actions: [
+                  Padding(padding: const EdgeInsets.all(14), child: Center(child: Text(_labelize(me.availability)))),
+                  HcThemeButton(controller: hcTheme),
+                ],
               ),
               body: ListView(
                 padding: const EdgeInsets.all(16),

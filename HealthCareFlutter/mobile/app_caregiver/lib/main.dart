@@ -31,17 +31,24 @@ Future<void> main() async {
   runApp(CaregiverApp(services: services));
 }
 
+final hcTheme = HcThemeController();
+
 class CaregiverApp extends StatelessWidget {
   final AppServices services;
   const CaregiverApp({super.key, required this.services});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'HomeCare — Caregiver',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorSchemeSeed: const Color(0xFF1A73E8), useMaterial3: true),
-      home: LoginScreen(services: services),
+    return AnimatedBuilder(
+      animation: hcTheme,
+      builder: (context, _) => MaterialApp(
+        title: 'HomeCare — Caregiver',
+        debugShowCheckedModeBanner: false,
+        theme: hcTheme.light,
+        darkTheme: hcTheme.dark,
+        themeMode: hcTheme.mode,
+        home: LoginScreen(services: services),
+      ),
     );
   }
 }

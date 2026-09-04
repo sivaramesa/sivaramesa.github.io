@@ -5,6 +5,7 @@ import 'package:hc_core/hc_core.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
+import '../main.dart';
 import '../services.dart';
 
 /// Admin dashboard — the middle-man view. Five tabs: Dashboard, Clients,
@@ -34,6 +35,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('HomeCare Admin'),
+          actions: [HcThemeButton(controller: hcTheme)],
           bottom: const TabBar(isScrollable: true, tabs: [
             Tab(text: 'Dashboard'),
             Tab(text: 'Services'),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:hc_core/hc_core.dart';
 
+import '../main.dart';
 import '../services.dart';
 
 /// Book a service (parity with the PWA book screen):
@@ -188,7 +189,7 @@ class _BookScreenState extends State<BookScreen> {
   Widget build(BuildContext context) {
     final locs = widget.client.savedLocations;
     return Scaffold(
-      appBar: AppBar(title: const Text('Book a service')),
+      appBar: AppBar(title: const Text('Book a service'), actions: [HcThemeButton(controller: hcTheme)]),
       body: StreamBuilder<List<Service>>(
         stream: widget.services.services.stream(),
         builder: (context, snap) {

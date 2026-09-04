@@ -21,3 +21,5 @@ export 'src/services/tracking_service.dart';
 export 'src/services/notification_service.dart';
 export 'src/services/services_repository.dart';
 export 'src/services/settings_service.dart';
+
+export 'src/ui/theme.dart';

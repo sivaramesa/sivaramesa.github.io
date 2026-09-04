@@ -32,20 +32,24 @@ Future<void> main() async {
   runApp(ClientApp(services: services));
 }
 
+final hcTheme = HcThemeController();
+
 class ClientApp extends StatelessWidget {
   final AppServices services;
   const ClientApp({super.key, required this.services});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'HomeCare — Client',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF1A73E8),
-        useMaterial3: true,
+    return AnimatedBuilder(
+      animation: hcTheme,
+      builder: (context, _) => MaterialApp(
+        title: 'HomeCare — Client',
+        debugShowCheckedModeBanner: false,
+        theme: hcTheme.light,
+        darkTheme: hcTheme.dark,
+        themeMode: hcTheme.mode,
+        home: LoginScreen(services: services),
       ),
-      home: LoginScreen(services: services),
     );
   }
 }

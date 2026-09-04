@@ -5,8 +5,12 @@ publish_to: none
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
 
 dependencies:
+  flutter:
+    sdk: flutter
+
   # Firebase (source of truth + auth + push) — same project as the PWA.
   firebase_core: ^3.6.0
   cloud_firestore: ^5.4.4
