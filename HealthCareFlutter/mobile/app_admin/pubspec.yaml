@@ -1,0 +1,24 @@
+name: app_admin
+description: HomeCare Admin app — manage clients and caregivers, view all bookings and secret codes, payments and reports.
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  hc_core:
+    path: ../packages/hc_core
+  firebase_core: ^3.6.0
+  cloud_firestore: ^5.4.4
+  firebase_auth: ^5.3.1
+  intl: ^0.19.0
+  image_picker: ^1.1.2
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
