@@ -667,12 +667,13 @@ async function submitBooking(priority) {
     // NOT pre-write the unpaid booking, so a failed payment leaves no orphaned
     // unpaid record.
     await Lifecycle.pay(booking);                             // CREATED -> PAID (+write)
+    state.activeBookingId = booking.id;                       // track it even if broadcast hiccups
     Notify.toast('Payment received', 'Alerting nearby caregivers…', 'success');
     const { notified } = await Lifecycle.broadcast(booking, state.caregivers, booking.radiusKm, state.settings.matchLocationMode);
-    state.activeBookingId = booking.id;
     Notify.toast(priority ? 'Priority request sent' : 'Request sent', `${notified.length} caregiver(s) alerted`, 'info');
   } catch (e) {
-    Notify.toast('Booking failed', e.message || 'Payment could not be completed.', 'error');
+    console.error('submitBooking failed', e);
+    Notify.toast('Booking issue', e.message || 'Something went wrong. If you were charged, your request is saved.', 'error');
   } finally {
     _submittingBooking = false;
     btn.disabled = false; btn.textContent = btnLabel;
@@ -680,11 +681,26 @@ async function submitBooking(priority) {
   }
 }
 
+let _recoveringBroadcastId = null;
 // ── render active booking (drives every downstream stage) ────────────────────
 async function renderActive(b) {
   state.currentBooking = b;
   $('bookView').classList.add('hidden');
   $('activeView').classList.remove('hidden');
+
+  // Safety net: a paid booking that never advanced to broadcast (e.g. the
+  // broadcast step errored earlier) would be invisible to caregivers. Auto-
+  // recover by broadcasting it once.
+  if (b.status === BookingStatus.PAID && _recoveringBroadcastId !== b.id) {
+    _recoveringBroadcastId = b.id;
+    try {
+      await Lifecycle.broadcast(b, state.caregivers, b.radiusKm, state.settings.matchLocationMode);
+      Notify.toast('Request sent', 'Alerting nearby caregivers…', 'info');
+    } catch (e) {
+      console.error('auto-broadcast recovery failed', e);
+    }
+    return; // the write will re-trigger renderActive with broadcast status
+  }
 
   $('activeStatus').className = 'badge ' + b.status;
   $('activeStatus').textContent = labelize(b.status);

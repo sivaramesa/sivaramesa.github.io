@@ -55,16 +55,30 @@ export const Lifecycle = {
   /** req 3 — find eligible caregivers (speciality + within radius) and alert them.
    *  mode = which caregiver location to match on ('gps' | 'registered' | 'both'). */
   async broadcast(booking, allCaregivers, radiusKm, mode = 'gps') {
-    const targets = eligibleCaregivers(booking, allCaregivers, radiusKm, mode);
+    let targets = [];
+    try {
+      targets = eligibleCaregivers(booking, allCaregivers, radiusKm, mode);
+    } catch (e) {
+      // never let a matching hiccup block the broadcast — go open to everyone
+      console.warn('eligibleCaregivers failed; broadcasting with no pre-filter', e && e.message);
+      targets = [];
+    }
+    // Persist the BROADCAST status FIRST so a notification failure can never
+    // leave the booking stranded at 'paid'.
     advance(booking, BookingStatus.BROADCAST, {
       broadcast: { at: nowIso(), targetIds: targets.map((c) => c.id), radiusKm: radiusKm || booking.radiusKm }
     });
     await Data.write(COLLECTION.BOOKINGS, booking);
-    await Notify.toCaregivers(targets, {
-      title: 'New service request',
-      body: `${booking.speciality} needed near ${booking.location.label || 'client'}`,
-      bookingId: booking.id
-    });
+    // Notification is best-effort — its failure must not throw the caller.
+    try {
+      await Notify.toCaregivers(targets, {
+        title: 'New service request',
+        body: `${booking.speciality} needed near ${booking.location.label || 'client'}`,
+        bookingId: booking.id
+      });
+    } catch (e) {
+      console.warn('toCaregivers failed (booking already broadcast)', e && e.message);
+    }
     return { booking, notified: targets };
   },
 
