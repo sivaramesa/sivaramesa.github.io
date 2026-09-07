@@ -29,6 +29,7 @@ const cgFilter = { name: '', spec: '', sex: '', km: null, point: null }; // poin
 const dashFilter = { includeCompleted: false, atRiskOnly: false };
 // per-booking caregiver search (local overrides; never touches app-wide Settings)
 const inviteState = { bookingId: null, radiusKm: null, mode: 'gps', name: '', sex: '', includeOffline: false, selected: new Set() };
+let _headOfficePoint = null; // geocoded head-office point pending save
 
 /** True when the admin is mid-task: any modal open, or not on the dashboard
  *  tab. The periodic clock-refresh defers while this is true. */
@@ -114,19 +115,62 @@ function wireSettings() {
     if ($('matchLocationMode')) $('matchLocationMode').value = s.matchLocationMode || 'gps';
     if ($('startAlertMinutes')) $('startAlertMinutes').value = s.startAlertMinutes ?? 30;
     if ($('cancelReasons')) $('cancelReasons').value = (s.cancelReasons || []).join('\n');
+    if ($('showCodesToCaregiver')) $('showCodesToCaregiver').checked = s.showCodesToCaregiver !== false;
+    if ($('headOfficeRadius')) $('headOfficeRadius').value = s.headOfficeRadiusKm ?? 5;
+    if ($('headOfficeAddr') && s.headOffice && !_headOfficePoint) {
+      $('headOfficeAddr').value = s.headOffice.address || '';
+      _headOfficePoint = s.headOffice;
+    }
   });
 
   $('saveSettingsBtn').addEventListener('click', async () => {
     const patch = {
       locationVerification: $('locVerifyToggle').checked,
-      verifyRadiusMeters: Math.max(10, Number($('verifyRadius').value) || 50)
+      verifyRadiusMeters: Math.max(10, Number($('verifyRadius').value) || 50),
+      showCodesToCaregiver: $('showCodesToCaregiver').checked
     };
     try {
       await Settings.update(patch);
-      $('settingsStatus').textContent = `Saved · verification ${patch.locationVerification ? 'ON' : 'OFF'} · ${patch.verifyRadiusMeters} m`;
-      Notify.toast('Settings saved', 'Location verification updated', 'success');
+      $('settingsStatus').textContent = `Saved · verification ${patch.locationVerification ? 'ON' : 'OFF'} · ${patch.verifyRadiusMeters} m · codes to caregiver ${patch.showCodesToCaregiver ? 'ON' : 'OFF'}`;
+      Notify.toast('Settings saved', 'Verification & code visibility updated', 'success');
     } catch (e) {
       $('settingsStatus').textContent = 'Save failed: ' + e.message;
+    }
+  });
+
+  // Head office: geocode the address, then save location + radius.
+  $('headOfficeGeoBtn').addEventListener('click', async () => {
+    const addr = $('headOfficeAddr').value.trim();
+    if (!addr) { $('headOfficeStatus').textContent = 'Enter an address first.'; return; }
+    $('headOfficeStatus').textContent = 'Locating…';
+    try {
+      const res = await geocode(addr);
+      if (res) {
+        _headOfficePoint = { address: res.address, lat: res.lat, lng: res.lng };
+        $('headOfficeAddr').value = res.address;
+        $('headOfficeStatus').textContent = `Located: ${res.address}`;
+      } else {
+        _headOfficePoint = { address: addr, lat: null, lng: null };
+        $('headOfficeStatus').textContent = 'Saved address text (no map pin — distance check limited).';
+      }
+    } catch (e) {
+      _headOfficePoint = { address: addr, lat: null, lng: null };
+      $('headOfficeStatus').textContent = 'Map unavailable; address text only.';
+    }
+  });
+
+  $('saveHeadOfficeBtn').addEventListener('click', async () => {
+    if (!_headOfficePoint) _headOfficePoint = { address: $('headOfficeAddr').value.trim(), lat: null, lng: null };
+    const patch = {
+      headOffice: _headOfficePoint,
+      headOfficeRadiusKm: Math.max(1, Number($('headOfficeRadius').value) || 5)
+    };
+    try {
+      await Settings.update(patch);
+      $('headOfficeStatus').textContent = `Saved · ${_headOfficePoint.address || 'head office'} · green within ${patch.headOfficeRadiusKm} km`;
+      Notify.toast('Head office saved', patch.headOffice.address || 'location set', 'success');
+    } catch (e) {
+      $('headOfficeStatus').textContent = 'Save failed: ' + e.message;
     }
   });
 
@@ -993,6 +1037,7 @@ function openInterview(id) {
   $('imAddress').value = (c.address && c.address.address) || '';
   $('imOperating').value = (c.operatingLocation && c.operatingLocation.address) || '';
   $('imFeedback').value = c.interviewFeedback || '';
+  renderHeadOfficeDistance(c);
   // speciality checkboxes
   $('imSpecs').innerHTML = Object.values(Speciality).map((s) =>
     `<label style="flex:0 0 auto;font-weight:normal;display:flex;align-items:center;gap:4px">
@@ -1005,6 +1050,29 @@ function openInterview(id) {
     : '<span class="muted" style="font-size:13px">No certificates</span>';
   $('imStatus').textContent = '';
   $('interviewModal').classList.remove('hidden');
+}
+
+/** Head-office distance label for the caregiver's registered (operating) location. */
+function renderHeadOfficeDistance(c) {
+  const el = $('imHeadOfficeDist');
+  if (!el) return;
+  const s = Settings.current();
+  const ho = s.headOffice;
+  if (!ho || ho.lat == null) {
+    el.innerHTML = '<span class="muted">Set the head office location in Settings to see the distance check.</span>';
+    return;
+  }
+  const op = c.operatingLocation;
+  if (!op || op.lat == null) {
+    el.innerHTML = '<span style="color:var(--warn)">⚠ Caregiver has no mapped operating location — distance to head office unknown.</span>';
+    return;
+  }
+  const limit = Number(s.headOfficeRadiusKm ?? 5);
+  const d = distanceKm(ho, op);
+  const within = d <= limit;
+  el.innerHTML = within
+    ? `<span style="color:var(--ok)">✓ ${d.toFixed(1)} km from head office (within ${limit} km).</span>`
+    : `<span style="color:var(--warn)">⚠ ${d.toFixed(1)} km from head office — beyond the ${limit} km range.</span>`;
 }
 
 /** Apply the edited fields onto the caregiver record (returns the updated copy). */

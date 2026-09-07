@@ -17,6 +17,11 @@ describe('distanceKm', () => {
   it('is Infinity when a point lacks coords', () => {
     expect(distanceKm(A, null)).toBe(Infinity);
   });
+  it('head-office check: within 5km -> green, beyond -> amber (via distanceKm)', () => {
+    const headOffice = { lat: 13.0, lng: 80.0 };
+    expect(distanceKm(headOffice, near)).toBeLessThan(5);   // ~1km -> green
+    expect(distanceKm(headOffice, far)).toBeGreaterThan(5); // ~30km -> amber
+  });
 });
 
 describe('caregiverMatchPoints', () => {

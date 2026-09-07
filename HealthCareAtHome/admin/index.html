@@ -91,6 +91,7 @@
           <input id="imAddress" placeholder="Address" />
           <label>Operating (service) location</label>
           <input id="imOperating" placeholder="Operating address" />
+          <div id="imHeadOfficeDist" style="margin-top:4px;font-size:13px"></div>
           <div id="imCerts" style="margin-top:8px"></div>
           <hr style="margin:14px 0;border:none;border-top:1px solid var(--line)" />
           <label>Interview feedback</label>
@@ -140,7 +141,19 @@
           </div>
           <button id="saveSettingsBtn" class="btn small" style="max-width:140px">Save</button>
         </div>
+        <label style="margin:8px 0 0"><input type="checkbox" id="showCodesToCaregiver" /> Show secret codes to caregiver (off = only the client sees the code)</label>
         <p id="settingsStatus" class="muted"></p>
+
+        <hr style="margin:14px 0;border:none;border-top:1px solid var(--line)" />
+        <h2 style="font-size:14px">Head office location</h2>
+        <p class="muted">Set this first. Used to gauge how far a caregiver's registered location is during interview review.</p>
+        <div class="row" style="align-items:end">
+          <div style="flex:2"><label style="margin:0">Address</label><input id="headOfficeAddr" placeholder="Head office address" /></div>
+          <button id="headOfficeGeoBtn" class="btn secondary small" style="max-width:140px">Locate</button>
+          <div style="max-width:180px"><label style="margin:0">Green within (km)</label><input type="number" id="headOfficeRadius" min="1" step="1" value="5" /></div>
+          <button id="saveHeadOfficeBtn" class="btn small" style="max-width:140px">Save</button>
+        </div>
+        <p id="headOfficeStatus" class="muted"></p>
 
         <hr style="margin:14px 0;border:none;border-top:1px solid var(--line)" />
         <h2 style="font-size:14px">Booking &amp; priority</h2>

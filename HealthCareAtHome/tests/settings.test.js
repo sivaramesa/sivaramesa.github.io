@@ -22,6 +22,11 @@ describe('DEFAULT_SETTINGS — today\'s config keys', () => {
   it('has startAlertMinutes default 30', () => {
     expect(DEFAULT_SETTINGS.startAlertMinutes).toBe(30);
   });
+  it('has head office defaults (null, 5km) + codes-to-caregiver on', () => {
+    expect(DEFAULT_SETTINGS.headOffice).toBe(null);
+    expect(DEFAULT_SETTINGS.headOfficeRadiusKm).toBe(5);
+    expect(DEFAULT_SETTINGS.showCodesToCaregiver).toBe(true);
+  });
 });
 
 describe('priorityPrice', () => {

@@ -416,25 +416,9 @@ function renderQueue() {
   // or — when available — I match speciality + range via the normal rule.
   const forMe = open.filter((b) => {
     const specOk = Array.isArray(state.cg.specialities) && state.cg.specialities.includes(b.speciality);
-    const eligible = eligibleCaregivers(b, [state.cg], b.radiusKm, matchMode).length > 0;
-    // TEMP DIAGNOSTIC — why is a broadcast request shown/hidden for me?
-    console.info('[queue-match]', b.id.slice(-6), {
-      bookingSpeciality: b.speciality,
-      mySpecialities: state.cg.specialities,
-      specialityMatch: specOk,
-      available,
-      matchMode,
-      myGps: state.cg.location,
-      myOperating: state.cg.operatingLocation,
-      bookingLocation: b.location,
-      radiusKm: b.radiusKm,
-      distanceKm: caregiverDistanceKm(state.cg, b, matchMode),
-      invited: meInvited(b),
-      eligible,
-    });
     if (meInvited(b)) return specOk;
     if (!available) return false;
-    return eligible;
+    return eligibleCaregivers(b, [state.cg], b.radiusKm, matchMode).length > 0;
   });
 
   // invited requests first (high precedence)
@@ -494,8 +478,11 @@ function renderJob(b) {
       + (forWhom ? `<br><span class="muted">For: ${forWhom}</span>` : '');
   }
 
-  // start code visible to caregiver from acceptance onward
-  const showStart = b.codes.startCode && [BookingStatus.ACCEPTED, BookingStatus.EN_ROUTE, BookingStatus.ARRIVED].includes(b.status);
+  // start code visible to caregiver from acceptance onward — unless the admin
+  // has turned off showing codes to caregivers (then only the client sees it).
+  const codesToCaregiver = Settings.current().showCodesToCaregiver !== false;
+  const showStart = codesToCaregiver && b.codes.startCode &&
+    [BookingStatus.ACCEPTED, BookingStatus.EN_ROUTE, BookingStatus.ARRIVED].includes(b.status);
   $('startCodeBox').classList.toggle('hidden', !showStart);
   if (showStart) $('startCodeChip').textContent = b.codes.startCode;
 
@@ -504,7 +491,7 @@ function renderJob(b) {
   $('arrivedBtn').classList.toggle('hidden', b.status !== BookingStatus.EN_ROUTE);
   $('completeBtn').classList.toggle('hidden', b.status !== BookingStatus.IN_SERVICE);
 
-  const showComplete = b.status === BookingStatus.COMPLETION_PENDING;
+  const showComplete = codesToCaregiver && b.status === BookingStatus.COMPLETION_PENDING;
   $('completeCodeBox').classList.toggle('hidden', !showComplete);
   if (showComplete) $('completeCodeChip').textContent = b.codes.completeCode;
 

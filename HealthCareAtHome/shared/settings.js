@@ -32,7 +32,14 @@ export const DEFAULT_SETTINGS = Object.freeze({
   cancelReasons: ['No Show of Caregiver', 'Client requested', 'Priority changes'],
   // Admin dashboard: an accepted-but-not-started booking whose scheduled time is
   // within this many minutes (or already past) is highlighted as at-risk.
-  startAlertMinutes: 30
+  startAlertMinutes: 30,
+  // Head office location (must be set first). Used to gauge how far a
+  // caregiver's registered location is during interview review.
+  headOffice: null,             // { address, lat, lng }
+  headOfficeRadiusKm: 5,        // within this = green; beyond = amber warning
+  // Whether the secret start/complete codes are shown to the caregiver. When
+  // false, only the client sees the code (caregiver's screen hides it).
+  showCodesToCaregiver: true
 });
 
 /**
