@@ -25,7 +25,8 @@ export const Role = Object.freeze({
 
 // ── Caregiver account status (self-registration lifecycle) ───────────────────
 export const CaregiverStatus = Object.freeze({
-  REGISTERED: 'registered', // submitted, awaiting admin approval — cannot log in
+  REGISTERED: 'registered', // submitted, awaiting admin review — cannot log in
+  INTERVIEW: 'interview',   // called for interview — cannot log in yet
   ACTIVE: 'active',         // approved by admin — can log in
   REJECTED: 'rejected'      // admin rejected the registration
 });

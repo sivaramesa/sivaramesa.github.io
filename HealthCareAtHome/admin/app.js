@@ -56,9 +56,10 @@ function boot() {
   wireDashboardFilters();
   wireInviteModal();
   wireCancelReasonModal();
+  wireInterviewModal();
 
   Sync.subscribe(COLLECTION.CLIENTS, (list) => { state.clients = list; renderClients(); renderDashboard(); });
-  Sync.subscribe(COLLECTION.CAREGIVERS, (list) => { state.caregivers = list; renderCaregivers(); renderRegistrations(); renderDashboard(); });
+  Sync.subscribe(COLLECTION.CAREGIVERS, (list) => { state.caregivers = list; renderCaregivers(); renderRegistrations(); renderInterviews(); renderDashboard(); });
   Sync.subscribe(COLLECTION.BOOKINGS, (list) => {
     state.bookings = list.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     renderDashboard(); renderPayments();
@@ -776,9 +777,10 @@ function renderInviteResults() {
   const mode = inviteState.mode;
   const radius = inviteState.radiusKm || Infinity;
 
-  // candidates: approved caregivers matching the booking speciality
+  // candidates: ACTIVE caregivers matching the booking speciality (registered/
+  // interview/rejected are not eligible to be dispatched)
   let list = state.caregivers.filter((c) =>
-    (c.status || CaregiverStatus.ACTIVE) !== CaregiverStatus.REGISTERED &&
+    (c.status || CaregiverStatus.ACTIVE) === CaregiverStatus.ACTIVE &&
     Array.isArray(c.specialities) && c.specialities.includes(b.speciality));
 
   // by default show only currently-available caregivers; the checkbox widens
@@ -917,22 +919,20 @@ function renderRegistrations() {
         <div style="margin-top:4px"><b>Certificates:</b> ${certs}</div>
       </div>
       <div class="row" style="margin-top:10px">
-        <button class="btn ok small" data-approve="${c.id}">Approve → Active</button>
+        <button class="btn ok small" data-interview="${c.id}">Call for interview</button>
         <button class="btn danger small" data-reject="${c.id}">Reject</button>
       </div>
     </div>`;
   }).join('');
 
-  $('registrationList').querySelectorAll('[data-approve]').forEach((btn) => {
+  $('registrationList').querySelectorAll('[data-interview]').forEach((btn) => {
     guardOnce(btn, async () => {
-      const c = state.caregivers.find((x) => x.id === btn.dataset.approve);
-      if (!c || c.status === CaregiverStatus.ACTIVE) return;
-      c.status = CaregiverStatus.ACTIVE;
-      // issue a login access code if none set yet
-      if (!c.accessCode) c.accessCode = String(Math.floor(100000 + Math.random() * 900000));
+      const c = state.caregivers.find((x) => x.id === btn.dataset.interview);
+      if (!c || c.status !== CaregiverStatus.REGISTERED) return;
+      c.status = CaregiverStatus.INTERVIEW;
       c.updatedAt = nowIso();
       await Data.write(COLLECTION.CAREGIVERS, c);
-      Notify.toast('Approved', `${c.name} is now active · access code ${c.accessCode}`, 'success');
+      Notify.toast('Called for interview', `${c.name} moved to the Interviews tab.`, 'success');
     });
   });
 
@@ -946,6 +946,125 @@ function renderRegistrations() {
       await Data.write(COLLECTION.CAREGIVERS, c);
       Notify.toast('Rejected', c.name, 'info');
     });
+  });
+}
+
+// ── caregiver interviews (edit + feedback + approve/reject) ──────────────────
+let _interviewId = null;
+
+function renderInterviews() {
+  const list = state.caregivers.filter((c) => c.status === CaregiverStatus.INTERVIEW);
+  if ($('interviewEmpty')) $('interviewEmpty').classList.toggle('hidden', list.length > 0);
+  const el = $('interviewList');
+  if (!el) return;
+  el.innerHTML = list.map((c) => {
+    const photo = c.photo
+      ? `<img src="${c.photo}" alt="" style="width:48px;height:48px;border-radius:8px;object-fit:cover" />`
+      : '<div style="width:48px;height:48px;border-radius:8px;background:var(--card-2)"></div>';
+    return `<div class="card row-subtle">
+      <div style="display:flex;gap:12px;align-items:center">
+        ${photo}
+        <div style="flex:1">
+          <strong>${c.name}</strong>
+          <div class="muted">${c.phone} · ${(c.specialities || []).map(labelize).join(', ') || '—'}</div>
+          ${c.interviewFeedback ? `<div class="muted" style="font-size:12px">📝 ${c.interviewFeedback}</div>` : ''}
+        </div>
+        <button class="btn small" data-open-interview="${c.id}">Open</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('[data-open-interview]').forEach((btn) => {
+    btn.addEventListener('click', () => openInterview(btn.dataset.openInterview));
+  });
+}
+
+function openInterview(id) {
+  const c = state.caregivers.find((x) => x.id === id);
+  if (!c) return;
+  _interviewId = id;
+  $('imId').textContent = '#' + c.id.slice(-6);
+  $('imName').value = c.name || '';
+  $('imForename').value = c.forename || '';
+  $('imSurname').value = c.surname || '';
+  $('imPhone').value = c.phone || '';
+  $('imSex').value = c.sex || '';
+  $('imDob').value = c.dob || '';
+  $('imAddress').value = (c.address && c.address.address) || '';
+  $('imOperating').value = (c.operatingLocation && c.operatingLocation.address) || '';
+  $('imFeedback').value = c.interviewFeedback || '';
+  // speciality checkboxes
+  $('imSpecs').innerHTML = Object.values(Speciality).map((s) =>
+    `<label style="flex:0 0 auto;font-weight:normal;display:flex;align-items:center;gap:4px">
+      <input type="checkbox" class="im-spec" value="${s}" ${(c.specialities || []).includes(s) ? 'checked' : ''} /> ${labelize(s)}
+    </label>`).join('');
+  // certificates (view)
+  $('imCerts').innerHTML = (c.certificates || []).length
+    ? '<b style="font-size:13px">Certificates:</b> ' + (c.certificates || []).map((ct, i) =>
+        `<a href="${ct.dataUrl}" target="_blank" rel="noopener" class="badge" style="margin:2px">📄 ${ct.name || ('Cert ' + (i + 1))}</a>`).join(' ')
+    : '<span class="muted" style="font-size:13px">No certificates</span>';
+  $('imStatus').textContent = '';
+  $('interviewModal').classList.remove('hidden');
+}
+
+/** Apply the edited fields onto the caregiver record (returns the updated copy). */
+function _applyInterviewEdits(c) {
+  const specs = [...document.querySelectorAll('#imSpecs .im-spec:checked')].map((cb) => cb.value);
+  const setAddr = (existing, text) => {
+    text = (text || '').trim();
+    if (!text) return existing || null;
+    return { ...(existing || {}), address: text };
+  };
+  c.name = $('imName').value.trim() || c.name;
+  c.forename = $('imForename').value.trim();
+  c.surname = $('imSurname').value.trim();
+  c.phone = $('imPhone').value.trim() || c.phone;
+  c.sex = $('imSex').value;
+  c.dob = $('imDob').value;
+  c.specialities = specs.length ? specs : c.specialities;
+  c.address = setAddr(c.address, $('imAddress').value);
+  c.operatingLocation = setAddr(c.operatingLocation, $('imOperating').value);
+  c.interviewFeedback = $('imFeedback').value.trim();
+  c.updatedAt = nowIso();
+  return c;
+}
+
+function wireInterviewModal() {
+  $('imClose').addEventListener('click', () => { $('interviewModal').classList.add('hidden'); _interviewId = null; });
+
+  $('imSave').addEventListener('click', async () => {
+    const c = state.caregivers.find((x) => x.id === _interviewId);
+    if (!c) return;
+    _applyInterviewEdits(c);
+    await Data.write(COLLECTION.CAREGIVERS, c);
+    $('imStatus').textContent = 'Saved.';
+    Notify.toast('Saved', `${c.name} updated`, 'success');
+  });
+
+  guardedClick('imApprove', async () => {
+    const c = state.caregivers.find((x) => x.id === _interviewId);
+    if (!c) return;
+    _applyInterviewEdits(c);
+    c.status = CaregiverStatus.ACTIVE;
+    if (!c.accessCode) c.accessCode = String(Math.floor(100000 + Math.random() * 900000));
+    c.updatedAt = nowIso();
+    await Data.write(COLLECTION.CAREGIVERS, c);
+    $('interviewModal').classList.add('hidden');
+    _interviewId = null;
+    Notify.toast('Approved', `${c.name} is now active · access code ${c.accessCode}`, 'success');
+  });
+
+  guardedClick('imReject', async () => {
+    const c = state.caregivers.find((x) => x.id === _interviewId);
+    if (!c) return;
+    if (!confirm(`Reject ${c.name} after interview?`)) return;
+    _applyInterviewEdits(c);
+    c.status = CaregiverStatus.REJECTED;
+    c.updatedAt = nowIso();
+    await Data.write(COLLECTION.CAREGIVERS, c);
+    $('interviewModal').classList.add('hidden');
+    _interviewId = null;
+    Notify.toast('Rejected', c.name, 'info');
   });
 }
 

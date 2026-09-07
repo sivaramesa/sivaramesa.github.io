@@ -72,7 +72,10 @@ $('loginBtn').addEventListener('click', async () => {
   // Registration gate: only ACTIVE (admin-approved) caregivers may log in.
   const status = rec.status || CaregiverStatus.ACTIVE; // legacy records w/o status = active
   if (status === CaregiverStatus.REGISTERED) {
-    return Notify.toast('Awaiting approval', 'Your registration is under review by the admin.', 'error');
+    return Notify.toast('Awaiting review', 'Your registration is under review by the admin.', 'error');
+  }
+  if (status === CaregiverStatus.INTERVIEW) {
+    return Notify.toast('Interview scheduled', 'You have been called for an interview. Login opens after approval.', 'error');
   }
   if (status === CaregiverStatus.REJECTED) {
     return Notify.toast('Registration rejected', 'Your registration was not approved. Contact admin.', 'error');
