@@ -23,13 +23,26 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final rec = await widget.services.repo.caregiverByPhone(_phone.text.trim());
       if (rec == null) throw StateError('No caregiver with that number. Contact admin.');
+      // onboarding gate — only fully approved (active) caregivers may sign in.
+      switch (rec.status) {
+        case CaregiverStatus.registered:
+          throw StateError('Your registration is under review. You will be called for an interview.');
+        case CaregiverStatus.interview:
+          throw StateError('You are in the interview stage. Access opens once approved.');
+        case CaregiverStatus.rejected:
+          throw StateError('Your application was not approved. Please contact admin.');
+      }
       final session = await widget.services.auth.signInCaregiverWithCode(rec, _code.text.trim());
+      // single active session: stamp a fresh token; an older device watching
+      // its own record will see this change and sign itself out (newest wins).
+      final sessionId = 'sess_${DateTime.now().millisecondsSinceEpoch}';
+      await widget.services.repo.saveCaregiver(rec.copyWith(sessionId: sessionId));
       widget.services.notifications.register().then((token) {
-        if (token != null) widget.services.repo.saveCaregiver(rec.copyWith(fcmToken: token));
+        if (token != null) widget.services.repo.saveCaregiver(rec.copyWith(fcmToken: token, sessionId: sessionId));
       });
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute(
-        builder: (_) => HomeScreen(services: widget.services, caregiverId: rec.id, session: session),
+        builder: (_) => HomeScreen(services: widget.services, caregiverId: rec.id, session: session, sessionId: sessionId),
       ));
     } catch (e) {
       setState(() => _error = e.toString().replaceFirst('Bad state: ', ''));

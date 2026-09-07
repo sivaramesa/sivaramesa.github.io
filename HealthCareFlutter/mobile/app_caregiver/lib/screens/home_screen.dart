@@ -5,6 +5,7 @@ import 'package:hc_core/hc_core.dart';
 import '../main.dart';
 import '../services.dart';
 import 'active_job_screen.dart';
+import 'login_screen.dart';
 
 /// Availability toggle + incoming request queue. When a job is active, routes
 /// to the active-job screen. Driven by the live bookings + caregiver streams.
@@ -12,7 +13,8 @@ class HomeScreen extends StatefulWidget {
   final AppServices services;
   final String caregiverId;
   final Session session;
-  const HomeScreen({super.key, required this.services, required this.caregiverId, required this.session});
+  final String sessionId;
+  const HomeScreen({super.key, required this.services, required this.caregiverId, required this.session, required this.sessionId});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -21,6 +23,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   AppSettings _settings = const AppSettings();
   bool _accepting = false;
+  bool _kicked = false; // guards the newest-wins sign-out from firing twice
 
   @override
   void initState() {
@@ -38,6 +41,34 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _toast(String m) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+
+  Future<void> _logoff() async {
+    await widget.services.auth.signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => LoginScreen(services: widget.services)),
+      (route) => false,
+    );
+  }
+
+  /// Newest-login-wins: if this record's sessionId no longer matches the token
+  /// this device logged in with, a newer login superseded us — sign out.
+  void _enforceSingleSession(Caregiver me) {
+    if (_kicked) return;
+    if (me.sessionId != null && me.sessionId != widget.sessionId) {
+      _kicked = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await widget.services.auth.signOut();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Signed out — your account was opened on another device.')));
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => LoginScreen(services: widget.services)),
+          (route) => false,
+        );
+      });
+    }
+  }
 
   Future<void> _setAvailability(Caregiver cg, String value) async {
     var updated = cg;
@@ -102,6 +133,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (me == null) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
+        _enforceSingleSession(me);
 
         return StreamBuilder<List<Booking>>(
           stream: widget.services.repo.bookingsStream(),
@@ -124,6 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 actions: [
                   Padding(padding: const EdgeInsets.all(14), child: Center(child: Text(_labelize(me.availability)))),
                   HcThemeButton(controller: hcTheme),
+                  IconButton(tooltip: 'Log off', icon: const Icon(Icons.logout), onPressed: _logoff),
                 ],
               ),
               body: ListView(

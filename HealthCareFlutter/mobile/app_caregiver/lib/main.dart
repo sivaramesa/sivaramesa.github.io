@@ -28,6 +28,7 @@ Future<void> main() async {
     settings: SettingsService(db),
   );
 
+  await hcTheme.load();
   runApp(CaregiverApp(services: services));
 }
 

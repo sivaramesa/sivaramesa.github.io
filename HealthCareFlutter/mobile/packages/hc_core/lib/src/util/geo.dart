@@ -110,6 +110,7 @@ class Geo {
     final limit = radiusKm ?? booking.radiusKm ?? double.infinity;
     final canMeasure = booking.location.hasCoords;
     final matched = caregivers
+        .where((cg) => cg.status == CaregiverStatus.active)
         .where((cg) => cg.availability == Availability.available)
         .where((cg) => cg.specialities.contains(booking.speciality))
         .where((cg) {
@@ -124,6 +125,42 @@ class Geo {
         .compareTo(caregiverDistanceKm(b, booking.location, mode)));
     return matched;
   }
+}
+
+  /// Head-office distance verdict for the interview screen: how far a
+  /// caregiver's registered (operating) location is from the head office.
+  /// Mirrors the PWA admin renderHeadOfficeDistance rule:
+  ///  - no head office configured -> [HeadOfficeVerdict.noHeadOffice]
+  ///  - caregiver has no mapped operating location -> [HeadOfficeVerdict.unknown]
+  ///  - within radius -> [HeadOfficeVerdict.green], else [HeadOfficeVerdict.amber]
+  static HeadOfficeDistance headOfficeVerdict(
+    AppSettings settings,
+    HcLocation? operatingLocation,
+  ) {
+    final ho = settings.headOffice;
+    if (ho == null || !ho.hasCoords) {
+      return const HeadOfficeDistance(verdict: HeadOfficeVerdict.noHeadOffice, km: null);
+    }
+    if (operatingLocation == null || !operatingLocation.hasCoords) {
+      return const HeadOfficeDistance(verdict: HeadOfficeVerdict.unknown, km: null);
+    }
+    final d = distanceKm(ho, operatingLocation);
+    final within = d <= settings.headOfficeRadiusKm;
+    return HeadOfficeDistance(
+      verdict: within ? HeadOfficeVerdict.green : HeadOfficeVerdict.amber,
+      km: d,
+    );
+  }
+}
+
+enum HeadOfficeVerdict { green, amber, unknown, noHeadOffice }
+
+/// Head-office distance result: the [verdict] plus the measured [km] (null when
+/// unknown / no head office).
+class HeadOfficeDistance {
+  final HeadOfficeVerdict verdict;
+  final double? km;
+  const HeadOfficeDistance({required this.verdict, required this.km});
 }
 
 /// Result of a location-verification proximity check.

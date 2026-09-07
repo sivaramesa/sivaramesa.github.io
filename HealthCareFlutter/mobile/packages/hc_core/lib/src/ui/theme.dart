@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Shared theming for all three HomeCare apps: dark (default) / light mode plus
 /// five accent themes. A [ChangeNotifier] so the app rebuilds on change.
 ///
-/// Note: persistence is not wired here (no shared_preferences dependency yet);
-/// selections last for the app session. Add shared_preferences later to persist.
+/// Selections persist across launches via shared_preferences. Call [load]
+/// once at startup (e.g. before runApp) to restore the saved mode + accent.
 class HcAccent {
   final String key;
   final String label;
@@ -21,6 +22,9 @@ const List<HcAccent> hcAccents = [
 ];
 
 class HcThemeController extends ChangeNotifier {
+  static const _kModeKey = 'hc_theme_mode';     // 'dark' | 'light'
+  static const _kAccentKey = 'hc_theme_accent'; // accent key
+
   ThemeMode _mode = ThemeMode.dark; // default dark
   String _accentKey = 'blue';
 
@@ -28,15 +32,43 @@ class HcThemeController extends ChangeNotifier {
   String get accentKey => _accentKey;
   HcAccent get accent => hcAccents.firstWhere((a) => a.key == _accentKey, orElse: () => hcAccents.first);
 
+  /// Restore the saved preference. Safe to call once at startup; falls back to
+  /// the defaults (dark + blue) when nothing is stored or on any read error.
+  Future<void> load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final mode = prefs.getString(_kModeKey);
+      if (mode == 'light') _mode = ThemeMode.light;
+      if (mode == 'dark') _mode = ThemeMode.dark;
+      final accent = prefs.getString(_kAccentKey);
+      if (accent != null && hcAccents.any((a) => a.key == accent)) _accentKey = accent;
+      notifyListeners();
+    } catch (_) {
+      // keep defaults on any failure
+    }
+  }
+
+  Future<void> _persist() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kModeKey, _mode == ThemeMode.dark ? 'dark' : 'light');
+      await prefs.setString(_kAccentKey, _accentKey);
+    } catch (_) {
+      // persistence is best-effort
+    }
+  }
+
   void toggleMode() {
     _mode = _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
     notifyListeners();
+    _persist();
   }
 
   void setAccent(String key) {
     if (hcAccents.any((a) => a.key == key)) {
       _accentKey = key;
       notifyListeners();
+      _persist();
     }
   }
 

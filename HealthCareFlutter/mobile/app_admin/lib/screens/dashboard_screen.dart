@@ -341,8 +341,16 @@ class _CaregiversTabState extends State<_CaregiversTab> {
   final _name = TextEditingController();
   final _phone = TextEditingController();
   final _code = TextEditingController();
+  final _operating = TextEditingController();
   final Set<String> _specs = {};
   String? _photo; // base64 data captured for the new caregiver
+  AppSettings _settings = const AppSettings();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.services.settings.stream().listen((s) { if (mounted) setState(() => _settings = s); });
+  }
 
   Future<void> _pickPhoto() async {
     final picker = ImagePicker();
@@ -364,12 +372,27 @@ class _CaregiversTabState extends State<_CaregiversTab> {
       specialities: _specs.toList(),
       accessCode: code,
       photo: _photo,
+      // admin-created caregivers still go through the interview stage
+      status: CaregiverStatus.registered,
+      operatingLocation: _operating.text.trim().isEmpty
+          ? null
+          : HcLocation(label: 'Operating', address: _operating.text.trim()),
     );
     await widget.services.repo.saveCaregiver(cg);
-    _name.clear(); _phone.clear(); _code.clear();
+    _name.clear(); _phone.clear(); _code.clear(); _operating.clear();
     setState(() { _specs.clear(); _photo = null; });
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Caregiver added · code $code')));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Caregiver registered · code $code · call for interview when ready')));
   }
+
+  Future<void> _callForInterview(Caregiver c) async {
+    await widget.services.repo.saveCaregiver(c.copyWith(status: CaregiverStatus.interview));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${c.name} called for interview')));
+  }
+
+  Future<void> _openInterview(Caregiver c) => showDialog(
+        context: context,
+        builder: (_) => _InterviewDialog(services: widget.services, caregiver: c, settings: _settings),
+      );
 
   Widget _photoPreview() {
     if (_photo == null) return const SizedBox.shrink();
@@ -393,6 +416,7 @@ class _CaregiversTabState extends State<_CaregiversTab> {
         TextField(controller: _name, decoration: const InputDecoration(labelText: 'Full name')),
         TextField(controller: _phone, decoration: const InputDecoration(labelText: 'Phone')),
         TextField(controller: _code, decoration: const InputDecoration(labelText: 'Access code (blank = auto)')),
+        TextField(controller: _operating, decoration: const InputDecoration(labelText: 'Operating (service) area — address')),
         const SizedBox(height: 8),
         Wrap(spacing: 8, children: [
           for (final s in Speciality.all)
@@ -414,29 +438,98 @@ class _CaregiversTabState extends State<_CaregiversTab> {
         const SizedBox(height: 10),
         FilledButton(onPressed: _add, child: const Text('Add caregiver')),
         const Divider(height: 28),
-        const Text('Caregivers (public profiles)', style: TextStyle(fontWeight: FontWeight.bold)),
         StreamBuilder<List<Caregiver>>(
           stream: widget.services.repo.caregiversStream(),
           builder: (context, snap) {
             final list = snap.data ?? const <Caregiver>[];
-            return Column(children: [
-              for (final c in list)
-                Card(
-                  child: ListTile(
-                    title: Text('${c.name}  ·  ★ ${c.rating} (${c.ratingCount})'),
-                    subtitle: Text('${c.phone} · ${labelize(c.availability)} · code ${c.accessCode ?? '—'}\n'
-                        '${c.specialities.map(labelize).join(', ')}'),
-                    isThreeLine: true,
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => widget.services.repo.deleteCaregiver(c.id),
-                    ),
-                  ),
-                ),
+            final registered = list.where((c) => c.status == CaregiverStatus.registered).toList();
+            final interviews = list.where((c) => c.status == CaregiverStatus.interview).toList();
+            final active = list.where((c) => c.status == CaregiverStatus.active).toList();
+            final rejected = list.where((c) => c.status == CaregiverStatus.rejected).toList();
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _section('New registrations (${registered.length})'),
+              for (final c in registered)
+                _cgCard(c, trailing: FilledButton(
+                  onPressed: () => _callForInterview(c),
+                  child: const Text('Call for interview'),
+                )),
+              _section('Interviews (${interviews.length})'),
+              for (final c in interviews)
+                _cgCard(c, trailing: FilledButton.tonal(
+                  onPressed: () => _openInterview(c),
+                  child: const Text('Review'),
+                )),
+              _section('Active caregivers (${active.length})'),
+              for (final c in active) _cgCard(c),
+              if (rejected.isNotEmpty) ...[
+                _section('Rejected (${rejected.length})'),
+                for (final c in rejected) _cgCard(c),
+              ],
             ]);
           },
         ),
       ],
+    );
+  }
+
+  Widget _section(String title) => Padding(
+        padding: const EdgeInsets.only(top: 12, bottom: 4),
+        child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+      );
+
+  Widget _cgCard(Caregiver c, {Widget? trailing}) {
+    final ho = Geo.headOfficeVerdict(_settings, c.operatingLocation);
+    return Card(
+      child: ListTile(
+        title: Text('${c.name}  ·  ★ ${c.rating} (${c.ratingCount})'),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${c.phone} · ${labelize(c.availability)} · code ${c.accessCode ?? '—'}'),
+            Text(c.specialities.map(labelize).join(', ')),
+            if (c.operatingLocation != null) _HeadOfficeLabel(ho),
+          ],
+        ),
+        isThreeLine: true,
+        trailing: trailing ??
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              onPressed: () => widget.services.repo.deleteCaregiver(c.id),
+            ),
+      ),
+    );
+  }
+}
+
+/// Green/amber head-office distance chip used on caregiver cards + interview.
+class _HeadOfficeLabel extends StatelessWidget {
+  final HeadOfficeDistance d;
+  const _HeadOfficeLabel(this.d);
+  @override
+  Widget build(BuildContext context) {
+    late final Color color;
+    late final String text;
+    switch (d.verdict) {
+      case HeadOfficeVerdict.green:
+        color = const Color(0xFF2E7D32);
+        text = '● ${d.km!.toStringAsFixed(1)} km from head office (within range)';
+        break;
+      case HeadOfficeVerdict.amber:
+        color = const Color(0xFFEF6C00);
+        text = '▲ ${d.km!.toStringAsFixed(1)} km from head office (beyond range)';
+        break;
+      case HeadOfficeVerdict.unknown:
+        color = Colors.grey;
+        text = 'Distance from head office unknown (no mapped location)';
+        break;
+      case HeadOfficeVerdict.noHeadOffice:
+        color = Colors.grey;
+        text = 'Set the head office location to gauge distance';
+        break;
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Text(text, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -612,6 +705,8 @@ class _SettingsCardState extends State<_SettingsCard> {
   final _priorityValue = TextEditingController();
   final _startAlert = TextEditingController();
   final _reasons = TextEditingController();
+  final _headOfficeAddr = TextEditingController();
+  final _headOfficeRadius = TextEditingController();
 
   @override
   void initState() {
@@ -627,6 +722,8 @@ class _SettingsCardState extends State<_SettingsCard> {
         _priorityValue.text = s.priorityValue.toString();
         _startAlert.text = s.startAlertMinutes.toString();
         _reasons.text = s.cancelReasons.join('\n');
+        _headOfficeAddr.text = s.headOffice?.address ?? '';
+        _headOfficeRadius.text = s.headOfficeRadiusKm.toStringAsFixed(0);
       }
     });
   }
@@ -634,12 +731,22 @@ class _SettingsCardState extends State<_SettingsCard> {
   Future<void> _save() async {
     final s = _s!;
     final reasons = _reasons.text.split('\n').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    // preserve head-office coordinates when the address text is unchanged
+    final addr = _headOfficeAddr.text.trim();
+    HcLocation? ho = s.headOffice;
+    if (addr.isEmpty) {
+      ho = null;
+    } else if (ho == null || ho.address != addr) {
+      ho = HcLocation(label: 'Head Office', address: addr, lat: ho?.lat, lng: ho?.lng);
+    }
     await widget.services.settings.update(s.copyWith(
       verifyRadiusMeters: (double.tryParse(_radius.text) ?? 50).clamp(10, 100000),
       bookingLeadHours: int.tryParse(_lead.text) ?? 4,
       priorityValue: double.tryParse(_priorityValue.text) ?? 1.5,
       startAlertMinutes: int.tryParse(_startAlert.text) ?? 30,
       cancelReasons: reasons.isEmpty ? s.cancelReasons : reasons,
+      headOffice: ho,
+      headOfficeRadiusKm: (double.tryParse(_headOfficeRadius.text) ?? 5).clamp(1, 1000),
     ));
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Settings saved')));
   }
@@ -694,6 +801,29 @@ class _SettingsCardState extends State<_SettingsCard> {
           ]),
           const SizedBox(height: 8),
           TextField(controller: _reasons, maxLines: 3, decoration: const InputDecoration(labelText: 'Cancellation reasons (one per line)')),
+          const Divider(height: 24),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Show secret codes to caregiver'),
+            subtitle: const Text('Off = only the client sees the start/complete codes', style: TextStyle(fontSize: 12)),
+            value: s.showCodesToCaregiver,
+            onChanged: (v) => widget.services.settings.update(s.copyWith(showCodesToCaregiver: v)),
+          ),
+          const SizedBox(height: 4),
+          const Text('Head office location', style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text('Set this first. Used to gauge how far a caregiver’s registered location is during interview review.',
+              style: TextStyle(fontSize: 12, color: Colors.grey)),
+          Row(children: [
+            Expanded(flex: 2, child: TextField(controller: _headOfficeAddr, decoration: const InputDecoration(labelText: 'Head office address'))),
+            const SizedBox(width: 8),
+            Expanded(child: TextField(controller: _headOfficeRadius, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Green within (km)'))),
+          ]),
+          if (s.headOffice != null && !s.headOffice!.hasCoords)
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Text('No coordinates on the head office yet — distances will read “unknown”. Save with a geocoded address to enable the check.',
+                  style: TextStyle(fontSize: 11, color: Color(0xFFEF6C00))),
+            ),
           const SizedBox(height: 8),
           Align(alignment: Alignment.centerRight, child: FilledButton(onPressed: _save, child: const Text('Save settings'))),
         ]),
@@ -881,7 +1011,7 @@ class _InviteDialogState extends State<_InviteDialog> {
   List<({Caregiver cg, double dist})> _matches() {
     final b = widget.booking;
     var list = widget.caregivers.where((c) =>
-        c.status != 'registered' && c.specialities.contains(b.speciality));
+        c.status == CaregiverStatus.active && c.specialities.contains(b.speciality));
     if (!_includeOffline) list = list.where((c) => c.availability == Availability.available);
     final withDist = list
         .map((c) => (cg: c, dist: Geo.caregiverDistanceKm(c, b.location, _mode)))
@@ -972,6 +1102,108 @@ class _InviteDialogState extends State<_InviteDialog> {
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
         FilledButton(onPressed: _busy ? null : _link, child: const Text('Link selected')),
+      ],
+    );
+  }
+}
+
+// ── Interview review dialog (edit all attributes + feedback + approve/reject) ─
+class _InterviewDialog extends StatefulWidget {
+  final AppServices services;
+  final Caregiver caregiver;
+  final AppSettings settings;
+  const _InterviewDialog({required this.services, required this.caregiver, required this.settings});
+  @override
+  State<_InterviewDialog> createState() => _InterviewDialogState();
+}
+
+class _InterviewDialogState extends State<_InterviewDialog> {
+  late final _name = TextEditingController(text: widget.caregiver.name);
+  late final _phone = TextEditingController(text: widget.caregiver.phone);
+  late final _code = TextEditingController(text: widget.caregiver.accessCode ?? '');
+  late final _operating = TextEditingController(text: widget.caregiver.operatingLocation?.address ?? '');
+  late final _feedback = TextEditingController(text: widget.caregiver.interviewFeedback ?? '');
+  late final Set<String> _specs = {...widget.caregiver.specialities};
+  bool _busy = false;
+
+  HcLocation? _operatingLocation() {
+    final addr = _operating.text.trim();
+    final existing = widget.caregiver.operatingLocation;
+    if (addr.isEmpty) return null;
+    // preserve existing coordinates when the address text is unchanged
+    if (existing != null && existing.address == addr) return existing;
+    return HcLocation(label: 'Operating', address: addr);
+  }
+
+  Caregiver _edited({String? status}) => widget.caregiver.copyWith(
+        name: _name.text.trim(),
+        phone: _phone.text.trim(),
+        accessCode: _code.text.trim().isEmpty ? null : _code.text.trim(),
+        specialities: _specs.toList(),
+        operatingLocation: _operatingLocation(),
+        interviewFeedback: _feedback.text.trim().isEmpty ? null : _feedback.text.trim(),
+        status: status,
+      );
+
+  Future<void> _save() async {
+    setState(() => _busy = true);
+    await widget.services.repo.saveCaregiver(_edited());
+    if (mounted) { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Interview details saved'))); }
+  }
+
+  Future<void> _decide(String status) async {
+    setState(() => _busy = true);
+    await widget.services.repo.saveCaregiver(_edited(status: status));
+    if (mounted) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(status == CaregiverStatus.active ? '${_name.text.trim()} approved → active' : '${_name.text.trim()} rejected')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // reflect the (possibly edited) operating address in the distance label
+    final ho = Geo.headOfficeVerdict(widget.settings, _operatingLocation());
+    return AlertDialog(
+      title: Text('Interview · ${widget.caregiver.name}'),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            TextField(controller: _name, decoration: const InputDecoration(labelText: 'Full name')),
+            TextField(controller: _phone, decoration: const InputDecoration(labelText: 'Phone')),
+            TextField(controller: _code, decoration: const InputDecoration(labelText: 'Access code')),
+            TextField(
+              controller: _operating,
+              decoration: const InputDecoration(labelText: 'Operating (service) location'),
+              onChanged: (_) => setState(() {}),
+            ),
+            Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: _HeadOfficeLabel(ho)),
+            const SizedBox(height: 4),
+            const Align(alignment: Alignment.centerLeft, child: Text('Specialities', style: TextStyle(fontSize: 12))),
+            Wrap(spacing: 8, children: [
+              for (final s in Speciality.all)
+                FilterChip(
+                  label: Text(labelize(s)),
+                  selected: _specs.contains(s),
+                  onSelected: (v) => setState(() => v ? _specs.add(s) : _specs.remove(s)),
+                ),
+            ]),
+            const SizedBox(height: 8),
+            TextField(controller: _feedback, maxLines: 3, decoration: const InputDecoration(labelText: 'Interview feedback / assessment')),
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        OutlinedButton(onPressed: _busy ? null : _save, child: const Text('Save changes')),
+        OutlinedButton(
+          onPressed: _busy ? null : () => _decide(CaregiverStatus.rejected),
+          style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+          child: const Text('Reject'),
+        ),
+        FilledButton(onPressed: _busy ? null : () => _decide(CaregiverStatus.active), child: const Text('Approve → Active')),
       ],
     );
   }

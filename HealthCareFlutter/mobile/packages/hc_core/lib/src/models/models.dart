@@ -125,7 +125,9 @@ class Caregiver {
   final int ratingCount;
   final HcLocation? location;          // live/last-seen GPS (gps match)
   final HcLocation? operatingLocation; // registered service area (registered match)
-  final String status;                 // registered | active | rejected
+  final String status;                 // registered | interview | active | rejected
+  final String? interviewFeedback;     // admin notes captured on the interview screen
+  final String? sessionId;             // newest-login-wins single-session token
   final String? accessCode;
   final String? fcmToken;
   final String? photo;       // data-URL / base64 thumbnail (identity proof)
@@ -143,7 +145,9 @@ class Caregiver {
     this.ratingCount = 0,
     this.location,
     this.operatingLocation,
-    this.status = 'active',
+    this.status = CaregiverStatus.active,
+    this.interviewFeedback,
+    this.sessionId,
     this.accessCode,
     this.fcmToken,
     this.photo,
@@ -164,6 +168,8 @@ class Caregiver {
         'location': location?.toMap(),
         'operatingLocation': operatingLocation?.toMap(),
         'status': status,
+        'interviewFeedback': interviewFeedback,
+        'sessionId': sessionId,
         'accessCode': accessCode,
         'fcmToken': fcmToken,
         'photo': photo,
@@ -186,7 +192,9 @@ class Caregiver {
         operatingLocation: m['operatingLocation'] == null
             ? null
             : HcLocation.fromMap(Map<String, dynamic>.from(m['operatingLocation'])),
-        status: (m['status'] ?? 'active') as String,
+        status: (m['status'] ?? CaregiverStatus.active) as String,
+        interviewFeedback: m['interviewFeedback'] as String?,
+        sessionId: m['sessionId'] as String?,
         accessCode: m['accessCode'] as String?,
         fcmToken: m['fcmToken'] as String?,
         photo: m['photo'] as String?,
@@ -195,6 +203,8 @@ class Caregiver {
       );
 
   Caregiver copyWith({
+    String? name,
+    String? phone,
     List<String>? specialities,
     String? availability,
     double? rating,
@@ -202,6 +212,8 @@ class Caregiver {
     HcLocation? location,
     HcLocation? operatingLocation,
     String? status,
+    String? interviewFeedback,
+    String? sessionId,
     String? accessCode,
     String? fcmToken,
     String? photo,
@@ -209,8 +221,8 @@ class Caregiver {
       Caregiver(
         id: id,
         role: role,
-        name: name,
-        phone: phone,
+        name: name ?? this.name,
+        phone: phone ?? this.phone,
         specialities: specialities ?? this.specialities,
         availability: availability ?? this.availability,
         rating: rating ?? this.rating,
@@ -218,6 +230,8 @@ class Caregiver {
         location: location ?? this.location,
         operatingLocation: operatingLocation ?? this.operatingLocation,
         status: status ?? this.status,
+        interviewFeedback: interviewFeedback ?? this.interviewFeedback,
+        sessionId: sessionId ?? this.sessionId,
         accessCode: accessCode ?? this.accessCode,
         fcmToken: fcmToken ?? this.fcmToken,
         photo: photo ?? this.photo,
@@ -665,6 +679,9 @@ class AppSettings {
   final String matchLocationMode;  // gps | registered | both
   final List<String> cancelReasons;
   final int startAlertMinutes;
+  final HcLocation? headOffice;       // reference point for interview distance check
+  final double headOfficeRadiusKm;    // within = green, beyond = amber
+  final bool showCodesToCaregiver;    // false = only the client sees secret codes
 
   const AppSettings({
     this.locationVerification = false,
@@ -679,6 +696,14 @@ class AppSettings {
       'Priority changes',
     ],
     this.startAlertMinutes = 30,
+    this.headOffice = const HcLocation(
+      label: 'Head Office',
+      address: 'Tambaram, Chennai',
+      lat: 12.9249,
+      lng: 80.1000,
+    ),
+    this.headOfficeRadiusKm = 5,
+    this.showCodesToCaregiver = false,
   });
 
   Map<String, dynamic> toMap() => {
@@ -690,6 +715,9 @@ class AppSettings {
         'matchLocationMode': matchLocationMode,
         'cancelReasons': cancelReasons,
         'startAlertMinutes': startAlertMinutes,
+        'headOffice': headOffice?.toMap(),
+        'headOfficeRadiusKm': headOfficeRadiusKm,
+        'showCodesToCaregiver': showCodesToCaregiver,
       };
 
   factory AppSettings.fromMap(Map<String, dynamic>? m) => AppSettings(
@@ -705,6 +733,13 @@ class AppSettings {
             .map((e) => e as String)
             .toList(),
         startAlertMinutes: ((m?['startAlertMinutes'] ?? 30) as num).toInt(),
+        headOffice: (m == null || !m.containsKey('headOffice'))
+            ? const HcLocation(label: 'Head Office', address: 'Tambaram, Chennai', lat: 12.9249, lng: 80.1000)
+            : (m['headOffice'] == null
+                ? null
+                : HcLocation.fromMap(Map<String, dynamic>.from(m['headOffice']))),
+        headOfficeRadiusKm: ((m?['headOfficeRadiusKm'] ?? 5) as num).toDouble(),
+        showCodesToCaregiver: (m?['showCodesToCaregiver'] ?? false) as bool,
       );
 
   AppSettings copyWith({
@@ -716,6 +751,9 @@ class AppSettings {
     String? matchLocationMode,
     List<String>? cancelReasons,
     int? startAlertMinutes,
+    HcLocation? headOffice,
+    double? headOfficeRadiusKm,
+    bool? showCodesToCaregiver,
   }) =>
       AppSettings(
         locationVerification: locationVerification ?? this.locationVerification,
@@ -726,6 +764,9 @@ class AppSettings {
         matchLocationMode: matchLocationMode ?? this.matchLocationMode,
         cancelReasons: cancelReasons ?? this.cancelReasons,
         startAlertMinutes: startAlertMinutes ?? this.startAlertMinutes,
+        headOffice: headOffice ?? this.headOffice,
+        headOfficeRadiusKm: headOfficeRadiusKm ?? this.headOfficeRadiusKm,
+        showCodesToCaregiver: showCodesToCaregiver ?? this.showCodesToCaregiver,
       );
 
   /// Compute the priority price for a base amount + recipient count.

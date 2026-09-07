@@ -17,6 +17,17 @@ class Availability {
   static const onService = 'on_service';
 }
 
+/// Caregiver onboarding lifecycle. A self-registered caregiver starts at
+/// [registered]; admin calls them for [interview]; after interview feedback
+/// they become [active] (can log in and take work) or [rejected].
+class CaregiverStatus {
+  static const registered = 'registered';
+  static const interview = 'interview';
+  static const active = 'active';
+  static const rejected = 'rejected';
+  static const all = <String>[registered, interview, active, rejected];
+}
+
 /// Booking lifecycle states (order mirrors requirements 3–9).
 class BookingStatus {
   static const created = 'created';
@@ -64,9 +75,14 @@ class PriorityMode {
 }
 
 /// Specialities offered (matched against caregiver skills).
+///
+/// Only Nursing + Physiotherapy are offered now. The legacy keys remain defined
+/// so historical records still labelize correctly, but they are excluded from
+/// [all] (the pick-lists) and from the services seed.
 class Speciality {
   static const nursing = 'nursing';
   static const physiotherapy = 'physiotherapy';
+  // Legacy (retired) — kept for backward-compatible display only.
   static const elderCare = 'elder_care';
   static const postSurgery = 'post_surgery';
   static const babyCare = 'baby_care';
@@ -75,10 +91,6 @@ class Speciality {
   static const all = <String>[
     nursing,
     physiotherapy,
-    elderCare,
-    postSurgery,
-    babyCare,
-    labSample,
   ];
 }
 
@@ -94,8 +106,4 @@ const kTerminalStatuses = <String>[
 const kServiceSeed = <Map<String, dynamic>>[
   {'key': 'nursing', 'name': 'Nursing', 'cost': 800},
   {'key': 'physiotherapy', 'name': 'Physiotherapy', 'cost': 700},
-  {'key': 'elder_care', 'name': 'Elder Care', 'cost': 600},
-  {'key': 'post_surgery', 'name': 'Post Surgery', 'cost': 900},
-  {'key': 'baby_care', 'name': 'Baby Care', 'cost': 650},
-  {'key': 'lab_sample', 'name': 'Lab Sample', 'cost': 300},
 ];

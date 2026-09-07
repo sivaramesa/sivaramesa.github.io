@@ -30,6 +30,13 @@ class _ActiveJobScreenState extends State<ActiveJobScreen> {
   bool _navigating = false;
   bool _busy = false; // guards stage buttons against double-tap
   bool _cancelHandled = false;
+  AppSettings _settings = const AppSettings();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.services.settings.stream().listen((s) { if (mounted) setState(() => _settings = s); });
+  }
 
   /// Run a stage action guarded against double-taps.
   Future<void> _guard(Future<void> Function() action) async {
@@ -193,7 +200,9 @@ class _ActiveJobScreenState extends State<ActiveJobScreen> {
               const SizedBox(height: 16),
               if (b.codes.startCode != null &&
                   [BookingStatus.accepted, BookingStatus.enRoute, BookingStatus.arrived].contains(b.status))
-                _codeCard('Service start code (read to client on arrival):', b.codes.startCode!),
+                _settings.showCodesToCaregiver
+                    ? _codeCard('Service start code (read to client on arrival):', b.codes.startCode!)
+                    : _codeHiddenNote('The client will enter the start code to begin the service.'),
               const SizedBox(height: 12),
               if (b.status == BookingStatus.accepted)
                 FilledButton.icon(icon: const Icon(Icons.navigation), onPressed: _busy ? null : () => _guard(() => _startTravel(b)), label: const Text('Start travel & share location')),
@@ -202,7 +211,9 @@ class _ActiveJobScreenState extends State<ActiveJobScreen> {
               if (b.status == BookingStatus.inService)
                 FilledButton(onPressed: _busy ? null : () => _guard(() => _requestCompletion(b)), child: const Text('Complete service')),
               if (b.status == BookingStatus.completionPending)
-                _codeCard('Completion code sent to client:', b.codes.completeCode ?? '——————'),
+                _settings.showCodesToCaregiver
+                    ? _codeCard('Completion code sent to client:', b.codes.completeCode ?? '——————')
+                    : _codeHiddenNote('The client will confirm completion with their code.'),
               if (b.status == BookingStatus.completionPending)
                 const Padding(padding: EdgeInsets.only(top: 10), child: Text('Waiting for the client to confirm with rating…', textAlign: TextAlign.center)),
               if (b.status == BookingStatus.completed)
@@ -213,6 +224,17 @@ class _ActiveJobScreenState extends State<ActiveJobScreen> {
       },
     );
   }
+
+  Widget _codeHiddenNote(String message) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            const Icon(Icons.lock_outline, size: 20),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message)),
+          ]),
+        ),
+      );
 
   Widget _codeCard(String label, String code) => Card(
         child: Padding(
