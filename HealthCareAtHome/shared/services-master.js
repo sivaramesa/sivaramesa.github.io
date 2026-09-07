@@ -22,11 +22,7 @@ export const DEFAULT_COMMISSION_PCT = Math.round((CONFIG.rules.platformCommissio
 /** The original hardcoded specialities, used to seed the master once. */
 const SEED = [
   { key: 'nursing', name: 'Nursing', cost: 800 },
-  { key: 'physiotherapy', name: 'Physiotherapy', cost: 700 },
-  { key: 'elder_care', name: 'Elder Care', cost: 600 },
-  { key: 'post_surgery', name: 'Post Surgery', cost: 900 },
-  { key: 'baby_care', name: 'Baby Care', cost: 650 },
-  { key: 'lab_sample', name: 'Lab Sample', cost: 300 }
+  { key: 'physiotherapy', name: 'Physiotherapy', cost: 700 }
 ];
 
 export function createService({ name, key, cost = 0, commissionPct = DEFAULT_COMMISSION_PCT, active = true }) {

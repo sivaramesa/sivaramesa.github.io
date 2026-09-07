@@ -33,13 +33,14 @@ export const DEFAULT_SETTINGS = Object.freeze({
   // Admin dashboard: an accepted-but-not-started booking whose scheduled time is
   // within this many minutes (or already past) is highlighted as at-risk.
   startAlertMinutes: 30,
-  // Head office location (must be set first). Used to gauge how far a
-  // caregiver's registered location is during interview review.
-  headOffice: null,             // { address, lat, lng }
+  // Head office location (used to gauge how far a caregiver's registered
+  // location is during interview review). Defaults to Tambaram, Chennai.
+  headOffice: { address: 'Tambaram, Chennai', lat: 12.9249, lng: 80.1000 },
   headOfficeRadiusKm: 5,        // within this = green; beyond = amber warning
   // Whether the secret start/complete codes are shown to the caregiver. When
   // false, only the client sees the code (caregiver's screen hides it).
-  showCodesToCaregiver: true
+  // Default OFF — codes are shown to the client only.
+  showCodesToCaregiver: false
 });
 
 /**

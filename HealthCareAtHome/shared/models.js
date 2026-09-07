@@ -72,11 +72,7 @@ export const TRANSITIONS = Object.freeze({
 // ── Specialities offered (matched against caregiver skills) ──────────────────
 export const Speciality = Object.freeze({
   NURSING: 'nursing',
-  PHYSIOTHERAPY: 'physiotherapy',
-  ELDER_CARE: 'elder_care',
-  POST_SURGERY: 'post_surgery',
-  BABY_CARE: 'baby_care',
-  LAB_SAMPLE: 'lab_sample'
+  PHYSIOTHERAPY: 'physiotherapy'
 });
 
 // ── Factories ────────────────────────────────────────────────────────────────

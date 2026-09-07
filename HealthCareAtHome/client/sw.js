@@ -7,7 +7,7 @@
  *   - Cross-origin (Firebase CDN / Google Maps / gstatic): network only — never
  *     cache opaque third-party responses.
  */
-const CACHE = 'homecare-client-v35';
+const CACHE = 'homecare-client-v36';
 const SHELL = [
   './',
   './index.html',

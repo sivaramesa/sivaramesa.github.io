@@ -22,10 +22,10 @@ describe('DEFAULT_SETTINGS — today\'s config keys', () => {
   it('has startAlertMinutes default 30', () => {
     expect(DEFAULT_SETTINGS.startAlertMinutes).toBe(30);
   });
-  it('has head office defaults (null, 5km) + codes-to-caregiver on', () => {
-    expect(DEFAULT_SETTINGS.headOffice).toBe(null);
+  it('head office defaults to Tambaram (5km) + codes hidden from caregiver by default', () => {
+    expect(DEFAULT_SETTINGS.headOffice).toEqual({ address: 'Tambaram, Chennai', lat: 12.9249, lng: 80.1000 });
     expect(DEFAULT_SETTINGS.headOfficeRadiusKm).toBe(5);
-    expect(DEFAULT_SETTINGS.showCodesToCaregiver).toBe(true);
+    expect(DEFAULT_SETTINGS.showCodesToCaregiver).toBe(false);
   });
 });
 
