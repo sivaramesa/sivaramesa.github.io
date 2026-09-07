@@ -6,7 +6,7 @@
  *   share live location -> mark arrival -> request completion (completion code
  *   issued to the client).
  */
-import { Availability, BookingStatus, CaregiverStatus, Speciality, nowIso, createCaregiver } from '../shared/models.js';
+import { Availability, BookingStatus, CaregiverStatus, Speciality, nowIso, uid, createCaregiver } from '../shared/models.js';
 import { COLLECTION } from '../shared/firebase.js';
 import { Data, Sync } from '../shared/sync.js';
 import { Auth } from '../shared/auth.js';
@@ -30,7 +30,10 @@ const state = {
   activeJobId: null,
   stopWatch: null,
   pingTimer: null,
-  unsub: null
+  unsub: null,
+  unsubCg: null,
+  sessionId: null,
+  _signingOut: false
 };
 
 async function boot() {
@@ -43,6 +46,7 @@ async function boot() {
 
   const sess = Auth.session();
   if (sess && sess.role === 'caregiver') {
+    state.sessionId = sess.sessionId || null; // restore this session's id
     state.cg = await Data.get(COLLECTION.CAREGIVERS, sess.userId);
     if (state.cg) return enterApp();
   }
@@ -76,6 +80,16 @@ $('loginBtn').addEventListener('click', async () => {
 
   try {
     await Auth.signInWithSecretCode(rec, code);
+    // Single active session (newest wins): stamp a fresh sessionId on the record
+    // and remember it locally; other devices watching this record will sign out.
+    const sessionId = uid('sess');
+    state.sessionId = sessionId;
+    rec.sessionId = sessionId;
+    rec.lastLoginAt = nowIso();
+    await Data.write(COLLECTION.CAREGIVERS, rec);
+    // persist sessionId in the local session so a reload keeps this identity
+    const sess = Auth.session();
+    if (sess) Auth.setSession({ ...sess, sessionId });
     state.cg = rec;
     Notify.registerDevice(async (token) => {
       rec.fcmToken = token; rec.updatedAt = nowIso();
@@ -295,6 +309,34 @@ function enterApp() {
     $('jobView').classList.add('hidden');
     renderQueue();
   });
+
+  // Single active session (newest login wins): watch my own caregiver record;
+  // if its sessionId changes to a different one, another device signed in and
+  // this session must sign out.
+  if (state.unsubCg) state.unsubCg();
+  state.unsubCg = Sync.subscribe(COLLECTION.CAREGIVERS, (all) => {
+    const me = all.find((c) => c.id === state.cg.id);
+    if (!me) return;
+    if (me.sessionId && state.sessionId && me.sessionId !== state.sessionId) {
+      forceSignOut('You have been signed out because your account was opened on another device.');
+      return;
+    }
+    // keep the live sessionId on our in-memory record so our own writes don't
+    // clobber the takeover token (they carry state.cg's fields back to Firestore)
+    if (me.sessionId) state.cg.sessionId = me.sessionId;
+  });
+}
+
+/** Sign out this session (used by the single-session guard). */
+function forceSignOut(message) {
+  if (state._signingOut) return;
+  state._signingOut = true;
+  try { stopSharing(); } catch (_) {}
+  try { if (state.unsub) state.unsub(); } catch (_) {}
+  try { if (state.unsubCg) state.unsubCg(); } catch (_) {}
+  try { Auth.signOut(); } catch (_) {}
+  alert(message);
+  location.reload();
 }
 
 // ── availability toggle (req 2: choose available / not any time) ────────────────
