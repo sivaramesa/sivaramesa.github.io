@@ -371,9 +371,25 @@ function renderQueue() {
   // or — when available — I match speciality + range via the normal rule.
   const forMe = open.filter((b) => {
     const specOk = Array.isArray(state.cg.specialities) && state.cg.specialities.includes(b.speciality);
+    const eligible = eligibleCaregivers(b, [state.cg], b.radiusKm, matchMode).length > 0;
+    // TEMP DIAGNOSTIC — why is a broadcast request shown/hidden for me?
+    console.info('[queue-match]', b.id.slice(-6), {
+      bookingSpeciality: b.speciality,
+      mySpecialities: state.cg.specialities,
+      specialityMatch: specOk,
+      available,
+      matchMode,
+      myGps: state.cg.location,
+      myOperating: state.cg.operatingLocation,
+      bookingLocation: b.location,
+      radiusKm: b.radiusKm,
+      distanceKm: caregiverDistanceKm(state.cg, b, matchMode),
+      invited: meInvited(b),
+      eligible,
+    });
     if (meInvited(b)) return specOk;
     if (!available) return false;
-    return eligibleCaregivers(b, [state.cg], b.radiusKm, matchMode).length > 0;
+    return eligible;
   });
 
   // invited requests first (high precedence)
