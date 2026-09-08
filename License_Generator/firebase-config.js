@@ -14,7 +14,9 @@
  */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
-  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   collection,
   doc,
   getDoc,
@@ -23,8 +25,7 @@ import {
   deleteDoc,
   onSnapshot,
   writeBatch,
-  serverTimestamp,
-  enableIndexedDbPersistence
+  serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import {
   getAuth,
@@ -52,18 +53,19 @@ window.__fbReady = new Promise(function (resolve, reject) {
 
 try {
   const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
+
+  // Modern offline persistence: configure the local cache at init time
+  // (replaces the deprecated enableIndexedDbPersistence). The multi-tab
+  // manager lets several open tabs share one IndexedDB-backed cache.
+  const db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  });
+
   const auth = getAuth(app);
 
   // Keep the user signed in across reloads/sessions.
   setPersistence(auth, browserLocalPersistence).catch(function (err) {
     console.warn('[firebase] auth persistence unavailable:', err && err.code);
-  });
-
-  // Enable offline persistence so the tool keeps working without a connection.
-  // Fails silently if multiple tabs are open or the browser doesn't support it.
-  enableIndexedDbPersistence(db).catch(function (err) {
-    console.warn('[firebase] IndexedDB persistence unavailable:', err && err.code);
   });
 
   // Publish the SDK surface the sync layer + auth gate need onto a single global.
