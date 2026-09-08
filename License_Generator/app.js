@@ -958,11 +958,17 @@
         if (passEl) passEl.value = '';
         // onAuth callback hides the overlay.
       }).catch(function (err) {
-        var msg = 'Sign-in failed.';
+        var msg;
         if (err && err.code === 'auth/invalid-credential') msg = 'Invalid email or password.';
+        else if (err && err.code === 'auth/wrong-password') msg = 'Invalid email or password.';
+        else if (err && err.code === 'auth/user-not-found') msg = 'No account found for that email.';
         else if (err && err.code === 'auth/invalid-email') msg = 'Invalid email address.';
         else if (err && err.code === 'auth/too-many-requests') msg = 'Too many attempts. Try again later.';
         else if (err && err.code === 'auth/network-request-failed') msg = 'Network error. Check your connection.';
+        else if (err && err.code === 'auth/operation-not-allowed') msg = 'Email/Password sign-in is not enabled in Firebase.';
+        else if (err && err.code === 'auth/unauthorized-domain') msg = 'This domain is not authorized in Firebase Auth settings.';
+        else msg = 'Sign-in failed: ' + ((err && (err.code || err.message)) || 'unknown error');
+        console.error('[auth] sign-in error:', err && err.code, err && err.message);
         if (errEl) { errEl.textContent = msg; errEl.removeAttribute('hidden'); }
       }).finally(function () {
         if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Sign In'; }
