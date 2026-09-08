@@ -412,54 +412,73 @@
     _setStatus('local-only');
 
     _setStatus('syncing');
-    return _awaitFbReady(3000).then(function (readyPromise) {
-      if (!readyPromise || typeof readyPromise.then !== 'function') {
-        // Firebase config never loaded — stay in local-only mode.
+    // Wait (briefly) for firebase-config.js to publish window.__fbReady, then
+    // resolve the surface. _resolveFb also covers the case where __fb is set
+    // but __fbReady timing was missed.
+    return _awaitFbReady(8000).then(function () {
+      return _resolveFb();
+    }).then(function (surface) {
+      if (!surface) {
+        // Firebase never loaded — stay in local-only mode.
         _setStatus('local-only');
-        return null;
+        return;
       }
-      return readyPromise;
-    }).then(function (readyPromise) {
-      if (!readyPromise) return; // local-only
-      return readyPromise.then(function (surface) {
-        fb = surface;
-        // Gate Firestore access on authentication. onAuthStateChanged fires
-        // immediately with the restored user (or null) and again on sign-in/out.
-        if (typeof fb.onAuthStateChanged === 'function') {
-          fb.onAuthStateChanged(function (user) {
-            _user = user || null;
-            if (typeof cb.onAuth === 'function') {
-              try { cb.onAuth(_user); } catch (e) {}
-            }
-            if (_user) {
-              // Authenticated — connect Firestore (migrate + listeners once).
-              _connectAuthed();
-            } else {
-              // Signed out — drop to local-only; keep cache for offline display.
-              ready = false;
-              _setStatus('local-only');
-            }
-          });
-        } else {
-          // No auth surface available; connect directly (legacy behavior).
-          _connectAuthed();
-        }
-      });
+      fb = surface;
+      // Gate Firestore access on authentication. onAuthStateChanged fires
+      // immediately with the restored user (or null) and again on sign-in/out.
+      if (typeof fb.onAuthStateChanged === 'function') {
+        fb.onAuthStateChanged(function (user) {
+          _user = user || null;
+          if (typeof cb.onAuth === 'function') {
+            try { cb.onAuth(_user); } catch (e) {}
+          }
+          if (_user) {
+            // Authenticated — connect Firestore (migrate + listeners once).
+            _connectAuthed();
+          } else {
+            // Signed out — drop to local-only; keep cache for offline display.
+            ready = false;
+            _setStatus('local-only');
+          }
+        });
+      } else {
+        // No auth surface available; connect directly (legacy behavior).
+        _connectAuthed();
+      }
     });
   }
 
-  // Sign in with email/password. Returns a Promise. On success, the auth state
-  // listener above connects Firestore automatically.
-  function signIn(email, password) {
-    if (!fb || typeof fb.signInWithEmail !== 'function') {
-      return Promise.reject(new Error('Firebase auth not available'));
+  // Resolve the Firebase surface, tolerating the case where init()'s async
+  // chain hasn't assigned `fb` yet. Falls back to window.__fbReady / window.__fb
+  // so sign-in works as soon as firebase-config.js has initialized.
+  function _resolveFb() {
+    if (fb) return Promise.resolve(fb);
+    if (window.__fbReady && typeof window.__fbReady.then === 'function') {
+      return window.__fbReady.then(function (surface) {
+        if (!fb) fb = surface; // cache for later
+        return surface;
+      });
     }
-    return fb.signInWithEmail(email, password);
+    if (window.__fb) { fb = window.__fb; return Promise.resolve(fb); }
+    return Promise.resolve(null);
+  }
+
+  // Sign in with email/password. Returns a Promise. On success, the auth state
+  // listener connects Firestore automatically.
+  function signIn(email, password) {
+    return _resolveFb().then(function (surface) {
+      if (!surface || typeof surface.signInWithEmail !== 'function') {
+        throw new Error('Firebase auth not available');
+      }
+      return surface.signInWithEmail(email, password);
+    });
   }
 
   function signOutUser() {
-    if (!fb || typeof fb.signOutUser !== 'function') return Promise.resolve();
-    return fb.signOutUser();
+    return _resolveFb().then(function (surface) {
+      if (!surface || typeof surface.signOutUser !== 'function') return;
+      return surface.signOutUser();
+    });
   }
 
   function currentUser() { return _user; }
