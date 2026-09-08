@@ -1,0 +1,27 @@
+{
+  "name": "license-generator-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Property-based tests for License Generator PWA",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.3",
+    "fast-check": "^4.1.1",
+    "@vitest/browser": "^3.2.3"
+  },
+  "main": "app.js",
+  "directories": {
+    "test": "tests"
+  },
+  "dependencies": {
+    "why-is-node-running": "^2.3.0",
+    "ws": "^8.21.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
