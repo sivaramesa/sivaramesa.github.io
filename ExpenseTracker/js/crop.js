@@ -32,17 +32,52 @@ export const Cropper = {
       const img = $('#crop-image');
       const url = URL.createObjectURL(file);
 
+      // Guard so we only ever settle once, and always release the object URL.
+      let settled = false;
+      const settle = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(loadTimer);
+        img.onload = null;
+        img.onerror = null;
+        URL.revokeObjectURL(url);
+        resolve(result);
+      };
+
+      // If the image can't be decoded (e.g. HEIC/HEIF from some phone cameras,
+      // or a corrupt capture) img.onload never fires. Without this the whole
+      // add-entry flow would hang forever. Fall back to using the original
+      // file uncropped so the user can still save the entry.
+      img.onerror = () => {
+        modal.hidden = true;
+        settle('skip');
+      };
+
+      // Safety net: if neither load nor error fires within a few seconds,
+      // don't leave the UI stuck — proceed with the original image.
+      const loadTimer = setTimeout(() => {
+        if (settled) return;
+        modal.hidden = true;
+        settle('skip');
+      }, 8000);
+
       img.onload = () => {
+        if (settled) return;
         modal.hidden = false;
         // Default crop box: centered, 80% of the displayed image.
         requestAnimationFrame(() => {
+          if (settled) return;
           const stage = $('#crop-stage');
-          const iw = img.clientWidth, ih = img.clientHeight;
+          // Fall back to natural dimensions if layout hasn't produced a
+          // measurable size yet, so the crop box is never degenerate.
+          const iw = img.clientWidth || img.naturalWidth || 1;
+          const ih = img.clientHeight || img.naturalHeight || 1;
           const w = Math.round(iw * 0.8), h = Math.round(ih * 0.8);
           const x = Math.round((iw - w) / 2), y = Math.round((ih - h) / 2);
           // position stage-relative (image is centered in stage)
           const ox = img.offsetLeft, oy = img.offsetTop;
-          this._state = { resolve, url, img, iw, ih, ox, oy, box: { x: ox + x, y: oy + y, w, h }, drag: null };
+          clearTimeout(loadTimer);
+          this._state = { resolve: settle, url, img, iw, ih, ox, oy, box: { x: ox + x, y: oy + y, w, h }, drag: null };
           this._draw();
         });
       };
@@ -108,20 +143,37 @@ export const Cropper = {
     const cropW = s.box.w * scaleX;
     const cropH = s.box.h * scaleY;
 
+    // Cap the output at a modest resolution. A full-res phone photo (12MP+)
+    // cropped and re-encoded at full size here was the slow step: this blob
+    // immediately gets re-decoded and downscaled again by compressImage(), so
+    // encoding it at native resolution/quality 0.9 was wasted work that could
+    // freeze the UI for seconds. compressImage() downsamples to 900px anyway,
+    // so 1600px is plenty of headroom without the full-res encode cost.
+    const MAX_CROP_EDGE = 1200;
+    let outW = Math.max(1, Math.round(cropW));
+    let outH = Math.max(1, Math.round(cropH));
+    const longest = Math.max(outW, outH);
+    if (longest > MAX_CROP_EDGE) {
+      const scale = MAX_CROP_EDGE / longest;
+      outW = Math.max(1, Math.round(outW * scale));
+      outH = Math.max(1, Math.round(outH * scale));
+    }
+
     const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(cropW));
-    canvas.height = Math.max(1, Math.round(cropH));
+    canvas.width = outW;
+    canvas.height = outH;
     canvas.getContext('2d').drawImage(
-      img, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height
+      img, cropX, cropY, cropW, cropH, 0, 0, outW, outH
     );
-    canvas.toBlob((blob) => this._finish(blob || null), 'image/jpeg', 0.9);
+    canvas.toBlob((blob) => this._finish(blob || null), 'image/jpeg', 0.85);
   },
 
   _finish(result) {
     const s = this._state;
     $('#crop-modal').hidden = true;
-    if (s && s.url) URL.revokeObjectURL(s.url);
     this._state = null;
+    // s.resolve is the `settle` guard from open(): it revokes the object URL,
+    // clears the img handlers, and resolves the promise exactly once.
     if (s && s.resolve) s.resolve(result);
   }
 };
