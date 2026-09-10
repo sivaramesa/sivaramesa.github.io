@@ -123,3 +123,52 @@ export function createZip(files) {
 
   return new Blob(chunks, { type: 'application/zip' });
 }
+
+/**
+ * Read a STORE-mode zip (as produced by createZip) back into its files.
+ * Only handles method 0 (stored) entries, which is all this app writes.
+ * @param {ArrayBuffer|Uint8Array} buffer
+ * @returns {Array<{name:string, data:Uint8Array}>}
+ */
+export function readZip(buffer) {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const decoder = new TextDecoder();
+  const out = [];
+
+  // Find End Of Central Directory (scan backwards for its signature).
+  let eocd = -1;
+  for (let i = bytes.length - 22; i >= 0; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) return out;
+
+  const count = view.getUint16(eocd + 10, true);
+  let ptr = view.getUint32(eocd + 16, true); // central directory offset
+
+  for (let i = 0; i < count; i++) {
+    if (view.getUint32(ptr, true) !== 0x02014b50) break; // central header sig
+    const method = view.getUint16(ptr + 10, true);
+    const compSize = view.getUint32(ptr + 20, true);
+    const nameLen = view.getUint16(ptr + 28, true);
+    const extraLen = view.getUint16(ptr + 30, true);
+    const commentLen = view.getUint16(ptr + 32, true);
+    const localOffset = view.getUint32(ptr + 42, true);
+    const name = decoder.decode(bytes.subarray(ptr + 46, ptr + 46 + nameLen));
+
+    // Jump to the local header to find where the data starts.
+    const lNameLen = view.getUint16(localOffset + 26, true);
+    const lExtraLen = view.getUint16(localOffset + 28, true);
+    const dataStart = localOffset + 30 + lNameLen + lExtraLen;
+
+    if (method === 0) {
+      out.push({ name, data: bytes.slice(dataStart, dataStart + compSize) });
+    } else {
+      // Not expected in this app; skip unsupported compressed entries.
+      console.warn('readZip: skipping compressed entry', name);
+    }
+
+    ptr += 46 + nameLen + extraLen + commentLen;
+  }
+  return out;
+}

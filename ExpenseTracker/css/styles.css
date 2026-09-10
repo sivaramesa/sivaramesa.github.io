@@ -367,7 +367,10 @@ small.hint { display: block; }
   background: rgba(37, 99, 235, 0.15);
   padding: 2px 8px; border-radius: 999px;
 }
-.history-del { color: var(--danger); border-color: transparent; font-size: 15px; line-height: 1; align-self: flex-start; }
+.history-actions { display: flex; gap: 4px; align-self: flex-start; }
+.history-edit { color: var(--primary); border-color: transparent; font-size: 15px; line-height: 1; }
+.history-edit:hover { background: rgba(37, 99, 235, 0.12); }
+.history-del { color: var(--danger); border-color: transparent; font-size: 15px; line-height: 1; }
 .history-del:hover { background: rgba(239, 68, 68, 0.12); }
 
 @media (max-width: 420px) {
@@ -416,6 +419,7 @@ small.hint { display: block; }
   display: grid; place-items: center;
 }
 .attach-thumb-del:hover { background: var(--danger); }
+.attach-thumb.attach-new { outline: 2px solid var(--success); outline-offset: -2px; }
 
 .entry-attach-tag {
   font-size: 12px; color: #a5b4fc; text-decoration: none;
@@ -456,6 +460,9 @@ small.hint { display: block; }
   background: var(--primary); border: 2px solid #fff; cursor: nwse-resize;
 }
 .crop-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+/* Edit dialog can be tall - allow it to scroll */
+.edit-dialog { max-height: 90vh; overflow-y: auto; }
 
 /* attachment thumbnail size label */
 .attach-size {

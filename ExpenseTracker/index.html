@@ -359,6 +359,88 @@
     </main>
   </div>
 
+  <!-- ============ EDIT ENTRY MODAL ============ -->
+  <div id="edit-modal" class="crop-modal" hidden>
+    <div class="crop-dialog edit-dialog">
+      <h3 class="crop-title">Edit transaction</h3>
+      <form id="edit-form">
+        <input type="hidden" id="edit-id" />
+
+        <div class="type-toggle" role="tablist" aria-label="Entry type">
+          <button type="button" class="type-btn edit-type-btn" data-type="expense">Expense</button>
+          <button type="button" class="type-btn edit-type-btn" data-type="income">Income</button>
+        </div>
+        <input type="hidden" id="edit-type" value="expense" />
+
+        <label class="field">
+          <span>Account head / project</span>
+          <select id="edit-account" required>
+            <option value="">Select account head</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Amount (₹, before GST)</span>
+          <input type="number" id="edit-amount" step="0.01" min="0.01" required inputmode="decimal" />
+        </label>
+
+        <label class="field">
+          <span>Category</span>
+          <input type="text" id="edit-category" list="category-list" />
+        </label>
+
+        <label class="field">
+          <span>Description</span>
+          <input type="text" id="edit-description" maxlength="160" />
+        </label>
+
+        <div class="field-row">
+          <label class="field">
+            <span>Date</span>
+            <input type="date" id="edit-date" required />
+          </label>
+          <label class="field">
+            <span>Time</span>
+            <input type="time" id="edit-time" />
+          </label>
+        </div>
+
+        <div class="gst-block">
+          <label class="checkbox-field">
+            <input type="checkbox" id="edit-gst-enabled" />
+            <span>Apply GST</span>
+          </label>
+          <div id="edit-gst-fields" class="field-row" hidden>
+            <label class="field">
+              <span>GST rate (%)</span>
+              <input type="number" id="edit-gst-rate" step="0.01" min="0" inputmode="decimal" />
+            </label>
+          </div>
+        </div>
+
+        <div class="field">
+          <span>Attachments</span>
+          <div id="edit-attach-existing" class="hint"></div>
+          <div class="attach-buttons">
+            <button type="button" id="edit-attach-camera-btn" class="btn btn-ghost btn-sm">📷 Camera</button>
+            <button type="button" id="edit-attach-file-btn" class="btn btn-ghost btn-sm">📎 Add files</button>
+          </div>
+          <small class="hint">New images are cropped/compressed and merged into the existing bundle.</small>
+          <input type="file" id="edit-attach-camera-input" accept="image/*" capture="environment" hidden />
+          <input type="file" id="edit-attach-file-input" accept="image/*" multiple hidden />
+        </div>
+        <div id="edit-attach-preview" class="attach-preview" hidden></div>
+
+        <p id="edit-error" class="auth-error" role="alert" hidden></p>
+
+        <div class="crop-actions">
+          <button type="button" id="edit-cancel" class="btn btn-ghost btn-sm">Cancel</button>
+          <button type="submit" id="edit-save" class="btn btn-primary btn-sm">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- ============ CROP MODAL ============ -->
   <div id="crop-modal" class="crop-modal" hidden>
     <div class="crop-dialog">

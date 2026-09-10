@@ -84,7 +84,8 @@ export const UI = {
       { el: $('#entry-account'), placeholder: 'Select account head' },
       { el: $('#list-account-filter'), placeholder: 'All accounts' },
       { el: $('#history-account-filter'), placeholder: 'All accounts' },
-      { el: $('#report-account-filter'), placeholder: 'All accounts' }
+      { el: $('#report-account-filter'), placeholder: 'All accounts' },
+      { el: $('#edit-account'), placeholder: 'Select account head' }
     ];
     for (const { el, placeholder } of selects) {
       if (!el) continue;
@@ -307,8 +308,12 @@ export const UI = {
               <span class="history-who">${escapeHtml(who)}${mine ? ' (you)' : ''}</span>
             </div>
           </div>
-          <button class="history-del btn btn-ghost btn-sm" title="Delete transaction" aria-label="Delete transaction">✕</button>
+          <div class="history-actions">
+            <button class="history-edit btn btn-ghost btn-sm" title="Edit transaction" aria-label="Edit transaction">✎</button>
+            <button class="history-del btn btn-ghost btn-sm" title="Delete transaction" aria-label="Delete transaction">✕</button>
+          </div>
         `;
+        row.querySelector('.history-edit').addEventListener('click', () => handlers.onEdit(e));
         row.querySelector('.history-del').addEventListener('click', () => handlers.onDelete(e));
         listEl.appendChild(row);
       }
@@ -413,6 +418,89 @@ export const UI = {
     $('#bs-gst-net').textContent = formatMoney(bs.gstNet);
 
     out.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+
+  /** Populate and open the edit modal for an entry. */
+  openEditModal(entry, isoToLocalDate, isoToTimeInput) {
+    $('#edit-id').value = entry.id;
+    $('#edit-type').value = entry.type;
+    document.querySelectorAll('.edit-type-btn').forEach((b) =>
+      b.classList.toggle('active', b.dataset.type === entry.type)
+    );
+    $('#edit-account').value = entry.accountId || '';
+    $('#edit-amount').value = entry.amount;
+    $('#edit-category').value = entry.category || '';
+    $('#edit-description').value = entry.description || '';
+    $('#edit-date').value = isoToLocalDate(entry.date);
+    $('#edit-time').value = isoToTimeInput(entry.date);
+    $('#edit-gst-enabled').checked = !!entry.gstEnabled;
+    $('#edit-gst-fields').hidden = !entry.gstEnabled;
+    $('#edit-gst-rate').value = entry.gstRate || 0;
+
+    $('#edit-attach-existing').textContent = 'Loading attachments…';
+    $('#edit-error').hidden = true;
+    $('#edit-attach-preview').hidden = true;
+    $('#edit-attach-preview').innerHTML = '';
+    $('#edit-modal').hidden = false;
+  },
+
+  closeEditModal() {
+    $('#edit-modal').hidden = true;
+  },
+
+  /**
+   * Unified attachment preview in the edit modal. Renders both existing
+   * (unzipped) attachments and newly added files, each removable.
+   * @param {Array<{kind:'existing'|'new', name:string, blob?:Blob, file?:File, sizeLabel?:string}>} items
+   * @param {(index:number)=>void} onRemove
+   */
+  renderEditAttachmentPreview(items, onRemove) {
+    const wrap = $('#edit-attach-preview');
+    const label = $('#edit-attach-existing');
+    wrap.innerHTML = '';
+    if (!items || !items.length) {
+      wrap.hidden = true;
+      label.textContent = 'No attachments. Add one below.';
+      return;
+    }
+    const existingCount = items.filter((x) => x.kind === 'existing').length;
+    const newCount = items.length - existingCount;
+    label.textContent = `${items.length} attachment${items.length === 1 ? '' : 's'}` +
+      (newCount ? ` (${existingCount} existing, ${newCount} new)` : '');
+    wrap.hidden = false;
+
+    items.forEach((item, i) => {
+      const thumb = document.createElement('div');
+      thumb.className = 'attach-thumb' + (item.kind === 'new' ? ' attach-new' : '');
+      const src = item.kind === 'new' ? item.file : item.blob;
+      const isImg = src && src.type && src.type.startsWith('image/');
+      if (isImg) {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(src);
+        img.alt = item.name || 'attachment';
+        img.onload = () => URL.revokeObjectURL(img.src);
+        thumb.appendChild(img);
+      } else {
+        const doc = document.createElement('span');
+        doc.className = 'attach-doc';
+        doc.textContent = '📄';
+        thumb.appendChild(doc);
+      }
+      if (item.sizeLabel) {
+        const size = document.createElement('span');
+        size.className = 'attach-size';
+        size.textContent = item.sizeLabel;
+        thumb.appendChild(size);
+      }
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'attach-thumb-del';
+      del.setAttribute('aria-label', 'Remove attachment');
+      del.textContent = '✕';
+      del.addEventListener('click', () => onRemove(i));
+      thumb.appendChild(del);
+      wrap.appendChild(thumb);
+    });
   }
 };
 

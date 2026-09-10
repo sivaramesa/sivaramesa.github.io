@@ -11,7 +11,10 @@ import {
   getDownloadURL,
   deleteObject
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
-import { createZip } from './zip.js';
+import { createZip, readZip } from './zip.js';
+import {
+  getBytes
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
 
 // Attachment limits (kept small on purpose per requirements).
 export const ATTACH_LIMITS = {
@@ -71,16 +74,18 @@ export async function compressImage(file, opts = {}) {
   let edge = opts.maxDimension || ATTACH_LIMITS.MAX_DIMENSION;
   let best = null;
 
-  for (let attempt = 0; attempt < 5; attempt++) {
+  // A phone photo is ~12MP; encoding it at full resolution 25 times froze the
+  // main thread for seconds. Downscale to `edge` up front (once per size) and
+  // sweep just a few quality steps. Two size passes are plenty in practice.
+  for (let attempt = 0; attempt < 2; attempt++) {
     const canvas = drawScaled(img, edge);
-    // Sweep quality from 0.7 down to 0.3.
-    for (let q = 0.7; q >= 0.3; q -= 0.1) {
+    for (const q of [0.6, 0.45, 0.35]) {
       const blob = await canvasToBlob(canvas, q);
       if (!best || blob.size < best.size) best = blob;
       if (blob.size <= target) return blob;
     }
     // Still too big at this size: shrink the longest edge and try again.
-    edge = Math.round(edge * 0.8);
+    edge = Math.round(edge * 0.75);
     if (edge < 300) break;
   }
 
@@ -96,6 +101,12 @@ async function blobToUint8(blob) {
   return new Uint8Array(buf);
 }
 
+function guessType(name) {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  const map = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', pdf: 'application/pdf' };
+  return map[ext] || 'application/octet-stream';
+}
+
 export const AttachmentStore = {
   /**
    * Compress each image, zip them together, and upload one .zip for an entry.
@@ -105,21 +116,19 @@ export const AttachmentStore = {
    * @param {File[]} files
    * @returns {{path:string, url:string, count:number}|null}
    */
-  async uploadZip(uid, entryId, files) {
-    if (!files || !files.length) return null;
-
+  /** Turn selected files into zip entries (compressing images). */
+  async _toZipEntries(files, startIdx = 1) {
     const zipFiles = [];
-    let idx = 1;
+    let idx = startIdx;
     for (const file of files) {
       try {
         if (file.type && file.type.startsWith('image/')) {
-          const blob = await compressImage(file);
-          zipFiles.push({
-            name: `attachment-${String(idx).padStart(2, '0')}.jpg`,
-            data: await blobToUint8(blob)
-          });
+          // The UI already compressed these to the target size during
+          // crop/selection. Re-compressing here just burns CPU and freezes
+          // the main thread again, so reuse the bytes as-is when flagged.
+          const blob = file._compressed ? file : await compressImage(file);
+          zipFiles.push({ name: `attachment-${String(idx).padStart(2, '0')}.jpg`, data: await blobToUint8(blob) });
         } else {
-          // Keep original name for non-images.
           const safe = (file.name || `file-${idx}`).replace(/[^\w.\-]+/g, '_');
           zipFiles.push({ name: `${String(idx).padStart(2, '0')}-${safe}`, data: await blobToUint8(file) });
         }
@@ -128,14 +137,62 @@ export const AttachmentStore = {
         console.warn('Skipping unreadable attachment:', e && e.message);
       }
     }
-    if (!zipFiles.length) return null;
+    return zipFiles;
+  },
 
+  async _upload(uid, entryId, zipFiles) {
+    if (!zipFiles.length) return null;
     const zipBlob = createZip(zipFiles);
     const path = `attachments/${uid}/${entryId}.zip`;
     const storageRef = ref(storage, path);
     await uploadBytes(storageRef, zipBlob, { contentType: 'application/zip' });
     const url = await getDownloadURL(storageRef);
     return { path, url, count: zipFiles.length };
+  },
+
+  /** Create a new zip bundle for an entry from scratch. */
+  async uploadZip(uid, entryId, files) {
+    if (!files || !files.length) return null;
+    const zipFiles = await this._toZipEntries(files, 1);
+    return this._upload(uid, entryId, zipFiles);
+  },
+
+  /**
+   * Download and unzip an entry's attachment bundle into displayable items.
+   * @returns {Promise<Array<{name:string, data:Uint8Array, blob:Blob}>>}
+   */
+  async fetchAttachments(existingPath) {
+    if (!existingPath) return [];
+    try {
+      const bytes = await getBytes(ref(storage, existingPath));
+      const entries = readZip(bytes);
+      return entries.map((e) => ({
+        name: e.name,
+        data: e.data,
+        blob: new Blob([e.data], { type: guessType(e.name) })
+      }));
+    } catch (e) {
+      console.warn('Could not read existing attachment bundle:', e && e.message);
+      return [];
+    }
+  },
+
+  /**
+   * Rebuild an entry's zip from a final set: kept existing entries plus new
+   * files (which get compressed). Uploads and returns {path,url,count}, or
+   * null if the set is empty (caller should then treat the entry as having
+   * no attachment).
+   * @param {string} uid
+   * @param {string} entryId
+   * @param {Array<{name:string,data:Uint8Array}>} keptEntries
+   * @param {File[]} newFiles
+   */
+  async rebuildZip(uid, entryId, keptEntries, newFiles) {
+    const kept = (keptEntries || []).map((k) => ({ name: k.name, data: k.data }));
+    const added = await this._toZipEntries(newFiles || [], kept.length + 1);
+    const all = kept.concat(added);
+    if (!all.length) return null;
+    return this._upload(uid, entryId, all);
   },
 
   async remove(path) {

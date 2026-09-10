@@ -83,26 +83,46 @@ export const Entries = {
     };
 
     const files = attachmentFiles ? Array.from(attachmentFiles) : [];
-    if (files.length) {
-      try {
-        const res = await AttachmentStore.uploadZip(who.uid, id, files);
-        if (res) {
-          record.attachmentPath = res.path;
-          record.attachmentUrl = res.url;
-          record.attachmentCount = res.count;
-        }
-      } catch (e) {
-        // Attachments are optional - don't block the entry on an upload failure.
-        console.warn('Attachment upload failed, saving without it:', e && e.message);
-      }
-    }
 
-    // Write local mirror immediately, then queue the push. If online, kick
-    // off a flush right away; if offline, it stays queued until reconnect.
+    // Save the entry locally and queue the sync FIRST so it appears instantly.
+    // The photo upload can be slow on mobile data, so we do NOT block the save
+    // on it: the entry is written now and the attachment is uploaded in the
+    // background, patching the record (and re-queuing) once it completes.
+    // attachmentCount stays 0 until the upload actually confirms.
     await DB.putEntry(record);
     await DB.queueOp({ collection: COLLECTION, op: 'set', docId: id, payload: record });
     Sync.flush();
+
+    if (files.length) {
+      this._uploadInBackground(who.uid, id, files);
+    }
     return record;
+  },
+
+  /**
+   * Upload an entry's attachment bundle without blocking the save. When the
+   * upload finishes, patch the stored entry with the path/url/count and
+   * re-queue it for sync. Failures are non-fatal - the entry keeps its data.
+   */
+  async _uploadInBackground(uid, id, files) {
+    try {
+      const res = await AttachmentStore.uploadZip(uid, id, files);
+      const current = await DB.getEntry(id);
+      if (!current) return; // entry was deleted while uploading
+      const patched = {
+        ...current,
+        attachmentPath: res ? res.path : null,
+        attachmentUrl: res ? res.url : null,
+        attachmentCount: res ? res.count : 0,
+        updatedAt: nowIso()
+      };
+      await DB.putEntry(patched);
+      await DB.queueOp({ collection: COLLECTION, op: 'set', docId: id, payload: patched });
+      Sync.flush();
+    } catch (e) {
+      // Attachments are optional - don't lose the entry over an upload failure.
+      console.warn('Background attachment upload failed:', e && e.message);
+    }
   },
 
   async update(id, patch) {
@@ -113,6 +133,66 @@ export const Entries = {
     // Queue a full-document set so the replay is self-contained.
     await DB.queueOp({ collection: COLLECTION, op: 'set', docId: id, payload: merged });
     Sync.flush();
+    return merged;
+  },
+
+  /**
+   * Edit an entry's fields and its attachment set.
+   * @param {string} id
+   * @param {object} patch  field changes (gst is recomputed if amount/gst change)
+   * @param {object} [attachments] resolved attachment set:
+   *   { kept: [{name,data}], added: File[], changed: boolean }
+   *   - changed=false: leave the existing bundle untouched
+   *   - changed=true : rebuild from kept+added (empty => remove the bundle)
+   */
+  async edit(id, patch, attachments) {
+    const who = Auth.currentProfile();
+    if (!who) throw new Error('You must be signed in.');
+    const existing = await DB.getEntry(id);
+    if (!existing) throw new Error('Entry not found.');
+
+    const amount = patch.amount != null ? Number(patch.amount) : existing.amount;
+    const gstEnabled = patch.gstEnabled != null ? patch.gstEnabled : existing.gstEnabled;
+    const gstRate = patch.gstRate != null ? patch.gstRate : existing.gstRate;
+    const gst = computeGst(amount, gstEnabled, gstRate);
+
+    const next = {
+      ...existing,
+      ...patch,
+      amount,
+      gstEnabled: gst.gstEnabled,
+      gstRate: gst.gstRate,
+      gstAmount: gst.gstAmount,
+      totalAmount: gst.totalAmount,
+      updatedAt: nowIso()
+    };
+
+    if (attachments && attachments.changed) {
+      const kept = attachments.kept || [];
+      const added = attachments.added || [];
+      try {
+        const res = await AttachmentStore.rebuildZip(who.uid, id, kept, added);
+        if (res) {
+          next.attachmentPath = res.path;
+          next.attachmentUrl = res.url;
+          next.attachmentCount = res.count;
+        } else {
+          // Final set is empty -> remove the bundle entirely.
+          if (existing.attachmentPath) await AttachmentStore.remove(existing.attachmentPath);
+          next.attachmentPath = null;
+          next.attachmentUrl = null;
+          next.attachmentCount = 0;
+        }
+      } catch (e) {
+        console.warn('Attachment rebuild failed:', e && e.message);
+        throw new Error('Could not update attachments: ' + (e && e.message));
+      }
+    }
+
+    await DB.putEntry(next);
+    await DB.queueOp({ collection: COLLECTION, op: 'set', docId: id, payload: next });
+    Sync.flush();
+    return next;
   },
 
   async remove(id) {
