@@ -29,6 +29,7 @@ const state = {
   editItems: [],         // unified attachment list for the entry under edit:
                          //   {kind:'existing', name, data, blob} | {kind:'new', name, file, sizeLabel}
   editAttachChanged: false,
+  editHadAttachmentAtOpen: false, // did the entry already have attachmentPath when Edit opened?
   editType: 'expense',
   entryType: 'expense',
   lastReport: null,
@@ -296,6 +297,7 @@ function wireEditModal() {
 async function openEdit(entry) {
   state.editItems = [];
   state.editAttachChanged = false;
+  state.editHadAttachmentAtOpen = !!entry.attachmentPath;
   state.editType = entry.type;
   UI.openEditModal(entry, dateGroupKey, isoToTimeInput);
   renderEditAttachmentPreview();
@@ -389,6 +391,7 @@ async function handleSaveEdit(e) {
   const hasNew = state.editItems.some((x) => x.kind === 'new');
   const attachments = {
     changed: state.editAttachChanged,
+    hadAttachmentAtOpen: state.editHadAttachmentAtOpen,
     kept: state.editItems.filter((x) => x.kind === 'existing').map((x) => ({ name: x.name, data: x.data })),
     added: state.editItems.filter((x) => x.kind === 'new').map((x) => x.file)
   };
