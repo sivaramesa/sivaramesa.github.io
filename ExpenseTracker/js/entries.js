@@ -217,15 +217,6 @@ export const Entries = {
     const who = Auth.currentProfile();
     if (!who) throw new Error('You must be signed in.');
 
-    // If the user is touching attachments and this entry's original upload
-    // (queued right when it was created) is still running, wait for it:
-    // otherwise this edit's rebuild would race that upload to overwrite the
-    // same Storage zip path and one of the two attachment sets would
-    // silently disappear.
-    if (attachments && attachments.changed && this._uploads.has(id)) {
-      await this._uploads.get(id).catch(() => {});
-    }
-
     const existing = await DB.getEntry(id);
     if (!existing) throw new Error('Entry not found.');
 
@@ -245,53 +236,92 @@ export const Entries = {
       updatedAt: nowIso()
     };
 
-    if (attachments && attachments.changed) {
-      const added = attachments.added || [];
-      let kept = attachments.kept || [];
+    // Save the text/amount/GST changes IMMEDIATELY and let the (potentially
+    // slow) attachment rebuild happen in the background - mirroring create().
+    // Blocking the save on Storage uploads was what made the edit screen look
+    // frozen on a slow connection. The attachment fields keep their current
+    // values for now; the background task patches them once the zip lands.
+    await DB.putEntry(next);
+    await DB.queueOp({ collection: COLLECTION, op: 'set', docId: id, payload: next });
+    Sync.flush();
 
-      // This edit session opened before the original upload had attached
-      // anything (attachmentPath was still null then, so nothing existing
-      // was loaded into it). Now that it has landed, fold those files into
-      // "kept" instead of letting the rebuild below discard them.
-      if (!attachments.hadAttachmentAtOpen && existing.attachmentPath) {
+    if (attachments && attachments.changed) {
+      this._rebuildAttachmentsInBackground(who.uid, id, {
+        kept: attachments.kept || [],
+        added: attachments.added || [],
+        hadAttachmentAtOpen: !!attachments.hadAttachmentAtOpen,
+        prevPath: existing.attachmentPath || null
+      });
+    }
+    return next;
+  },
+
+  /**
+   * Rebuild + upload an edited entry's attachment bundle without blocking the
+   * save. Tracked in `_uploads` so remove()/a subsequent edit can coordinate
+   * with it. On completion it patches the stored entry's attachment fields and
+   * re-queues it for sync; failures leave the entry's data intact.
+   */
+  _rebuildAttachmentsInBackground(uid, id, plan) {
+    // If an earlier upload/rebuild for this entry is still running, chain
+    // after it so the two don't race to overwrite the same Storage zip path.
+    const prior = this._uploads.get(id);
+    const run = Promise.resolve(prior)
+      .catch(() => {})
+      .then(() => this._runRebuild(uid, id, plan));
+    this._uploads.set(id, run);
+    run.finally(() => {
+      if (this._uploads.get(id) === run) this._uploads.delete(id);
+    });
+    return run;
+  },
+
+  async _runRebuild(uid, id, plan) {
+    try {
+      let kept = plan.kept;
+
+      // Edit opened before the original upload had attached anything, but it
+      // has since landed - fold those files in instead of discarding them.
+      if (!plan.hadAttachmentAtOpen && plan.prevPath) {
         try {
-          const already = await AttachmentStore.fetchAttachments(existing.attachmentPath);
+          const already = await AttachmentStore.fetchAttachments(plan.prevPath);
           kept = already.map((f) => ({ name: f.name, data: f.data })).concat(kept);
         } catch (e) {
           console.warn('Could not merge newly-landed attachment before edit:', e && e.message);
         }
       }
 
-      try {
-        const res = await AttachmentStore.rebuildZip(who.uid, id, kept, added);
-        if (res) {
-          next.attachmentPath = res.path;
-          next.attachmentUrl = res.url;
-          next.attachmentCount = res.count;
-          // Keep the mirror-replace guard in sync with the new bundle.
-          pendingAttachmentPatches.set(id, {
-            attachmentPath: res.path,
-            attachmentUrl: res.url,
-            attachmentCount: res.count
-          });
-        } else {
-          // Final set is empty -> remove the bundle entirely.
-          if (existing.attachmentPath) await AttachmentStore.remove(existing.attachmentPath);
-          next.attachmentPath = null;
-          next.attachmentUrl = null;
-          next.attachmentCount = 0;
-          pendingAttachmentPatches.delete(id);
-        }
-      } catch (e) {
-        console.warn('Attachment rebuild failed:', e && e.message);
-        throw new Error('Could not update attachments: ' + (e && e.message));
-      }
-    }
+      const res = await AttachmentStore.rebuildZip(uid, id, kept, plan.added);
 
-    await DB.putEntry(next);
-    await DB.queueOp({ collection: COLLECTION, op: 'set', docId: id, payload: next });
-    Sync.flush();
-    return next;
+      if (this._pendingDeletes.delete(id)) {
+        // Entry was deleted while this rebuild ran - clean up what we uploaded.
+        if (res) await AttachmentStore.remove(res.path);
+        return;
+      }
+
+      const current = await DB.getEntry(id);
+      if (!current) return; // deleted while rebuilding
+
+      let patched;
+      if (res) {
+        patched = { ...current, attachmentPath: res.path, attachmentUrl: res.url, attachmentCount: res.count, updatedAt: nowIso() };
+        pendingAttachmentPatches.set(id, {
+          attachmentPath: res.path,
+          attachmentUrl: res.url,
+          attachmentCount: res.count
+        });
+      } else {
+        // Final set empty -> drop the bundle.
+        if (plan.prevPath) await AttachmentStore.remove(plan.prevPath);
+        patched = { ...current, attachmentPath: null, attachmentUrl: null, attachmentCount: 0, updatedAt: nowIso() };
+        pendingAttachmentPatches.delete(id);
+      }
+      await DB.putEntry(patched);
+      await DB.queueOp({ collection: COLLECTION, op: 'set', docId: id, payload: patched });
+      Sync.flush();
+    } catch (e) {
+      console.warn('Background attachment rebuild failed:', e && e.message);
+    }
   },
 
   async remove(id) {

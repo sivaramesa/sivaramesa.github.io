@@ -398,7 +398,7 @@ async function handleSaveEdit(e) {
 
   const saveBtn = UI.$('#edit-save');
   saveBtn.disabled = true;
-  saveBtn.textContent = hasNew ? 'Uploading…' : 'Saving…';
+  saveBtn.textContent = 'Saving…';
   try {
     await Entries.edit(id, patch, attachments);
     state.editItems = [];
@@ -408,7 +408,11 @@ async function handleSaveEdit(e) {
     renderEntries();
     renderHistory();
     renderAccounts();
-    UI.toast('Transaction updated.', 'success');
+    if (hasNew) {
+      UI.toast('Transaction updated. Attachment is uploading in the background.', 'success');
+    } else {
+      UI.toast('Transaction updated.', 'success');
+    }
   } catch (err) {
     fail(err && err.message);
   } finally {

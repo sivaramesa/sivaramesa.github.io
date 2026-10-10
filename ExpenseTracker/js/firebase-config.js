@@ -50,5 +50,10 @@ setPersistence(auth, browserLocalPersistence).catch((e) =>
 );
 
 export const storage = getStorage(app);
+// Firebase Storage retries a failing upload/op for ~2 minutes by default,
+// which makes a slow or flaky connection look like the app has frozen. Cap
+// the retry windows so a stuck request fails fast and the UI can react.
+storage.maxUploadRetryTime = 20000;    // 20s for upload byte transfers
+storage.maxOperationRetryTime = 20000; // 20s for metadata/getBytes/getDownloadURL
 
 export { app };
