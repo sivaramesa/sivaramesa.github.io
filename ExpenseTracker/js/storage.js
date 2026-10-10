@@ -188,7 +188,12 @@ export const AttachmentStore = {
    * @param {File[]} newFiles
    */
   async rebuildZip(uid, entryId, keptEntries, newFiles) {
-    const kept = (keptEntries || []).map((k) => ({ name: k.name, data: k.data }));
+    // Drop any kept entry whose bytes failed to load (e.g. the existing-bundle
+    // fetch errored). Zipping an entry with undefined data would throw and
+    // abort the whole rebuild, silently losing the attachment the user added.
+    const kept = (keptEntries || [])
+      .filter((k) => k && k.data && k.data.length)
+      .map((k) => ({ name: k.name, data: k.data }));
     const added = await this._toZipEntries(newFiles || [], kept.length + 1);
     const all = kept.concat(added);
     if (!all.length) return null;

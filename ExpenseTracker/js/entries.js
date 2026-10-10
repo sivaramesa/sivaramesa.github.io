@@ -187,9 +187,12 @@ export const Entries = {
       await DB.putEntry(patched);
       await DB.queueOp({ collection: COLLECTION, op: 'set', docId: id, payload: patched });
       Sync.flush();
+      console.info('Attachment upload done for', id, '-> count', patched.attachmentCount);
+      this._emitAttachmentResult({ id, ok: true, count: patched.attachmentCount });
     } catch (e) {
       // Attachments are optional - don't lose the entry over an upload failure.
       console.warn('Background attachment upload failed:', e && e.message);
+      this._emitAttachmentResult({ id, ok: false, error: (e && e.message) || 'upload failed' });
     }
   },
 
@@ -276,6 +279,16 @@ export const Entries = {
     return run;
   },
 
+  // Optional UI callback: cb({ id, ok, count, error }) fired when a background
+  // attachment rebuild/upload settles, so the UI can confirm or warn.
+  _onAttachmentResult: null,
+  onAttachmentResult(cb) { this._onAttachmentResult = cb; },
+  _emitAttachmentResult(info) {
+    if (this._onAttachmentResult) {
+      try { this._onAttachmentResult(info); } catch (_) {}
+    }
+  },
+
   async _runRebuild(uid, id, plan) {
     try {
       let kept = plan.kept;
@@ -319,8 +332,11 @@ export const Entries = {
       await DB.putEntry(patched);
       await DB.queueOp({ collection: COLLECTION, op: 'set', docId: id, payload: patched });
       Sync.flush();
+      console.info('Attachment rebuild done for', id, '-> count', patched.attachmentCount);
+      this._emitAttachmentResult({ id, ok: true, count: patched.attachmentCount });
     } catch (e) {
       console.warn('Background attachment rebuild failed:', e && e.message);
+      this._emitAttachmentResult({ id, ok: false, error: (e && e.message) || 'upload failed' });
     }
   },
 

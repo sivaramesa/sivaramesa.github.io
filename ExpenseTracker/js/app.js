@@ -149,6 +149,21 @@ async function loadAndWire() {
 
   UI.setSyncStatus(navigator.onLine);
 
+  // Surface the outcome of background attachment uploads (from Add or Edit),
+  // and refresh the list so the 📎 tag appears once the upload lands.
+  Entries.onAttachmentResult(async (info) => {
+    if (info.ok) {
+      state.entries = await Entries.getAllLocal();
+      renderEntries();
+      renderHistory();
+      if (info.count > 0) {
+        UI.toast(`Attachment saved (${info.count} file${info.count === 1 ? '' : 's'}).`, 'success');
+      }
+    } else {
+      UI.toast('Attachment upload failed: ' + info.error, 'error', 5000);
+    }
+  });
+
   // Live subscriptions.
   Accounts.subscribe(
     (list) => {
