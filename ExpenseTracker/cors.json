@@ -1,0 +1,22 @@
+[
+  {
+    "origin": [
+      "https://sivaramesa.github.io",
+      "http://localhost:8080",
+      "http://localhost:5000",
+      "http://127.0.0.1:8080"
+    ],
+    "method": ["GET", "HEAD", "PUT", "POST", "DELETE"],
+    "responseHeader": [
+      "Content-Type",
+      "Content-Length",
+      "Content-Disposition",
+      "Content-Range",
+      "Range",
+      "Authorization",
+      "x-goog-resumable",
+      "x-goog-meta-*"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

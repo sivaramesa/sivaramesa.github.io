@@ -107,6 +107,28 @@ service firebase.storage {
 
 > Adjust the read scope if you want each user to see only their own data instead of a shared ledger.
 
+### 3b. Storage CORS (required when the app is hosted on a different origin)
+
+When the app is served from a domain other than Firebase Hosting (e.g. GitHub Pages at `https://<user>.github.io`), the browser treats uploads to `firebasestorage.googleapis.com` as cross-origin. Without a CORS policy on the bucket, the preflight is blocked and **attachment uploads fail** with:
+
+```
+Access to XMLHttpRequest ... has been blocked by CORS policy
+```
+
+Apply the policy in `cors.json` (edit the `origin` list to match your host) using the Google Cloud SDK or Cloud Shell:
+
+```bash
+gcloud storage buckets update gs://expensetracker-f3e13.firebasestorage.app --cors-file=cors.json
+```
+
+If that bucket name isn't found, try the legacy name `gs://expensetracker-f3e13.appspot.com`. Verify with:
+
+```bash
+gcloud storage buckets describe gs://expensetracker-f3e13.firebasestorage.app --format="default(cors_config)"
+```
+
+CORS changes take effect within about a minute. This is a one-time, server-side setup — no app code change can substitute for it.
+
 ### 4. Run it
 
 The app uses ES modules and a service worker, so it must be served over HTTP(S), not opened via `file://`. From the `ExpenseTracker` folder:
