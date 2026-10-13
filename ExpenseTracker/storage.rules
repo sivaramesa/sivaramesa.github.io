@@ -1,0 +1,21 @@
+rules_version = '2';
+
+// Firebase Storage security rules for Ledger Tracker.
+//
+// The app uploads each entry's attachment bundle to:
+//   attachments/{uid}/{entryId}.zip
+// (see js/storage.js -> `attachments/${uid}/${entryId}.zip`).
+//
+// These rules MUST match that path. The previous `proofs/{uid}/{file}` rule
+// did not cover `attachments/...`, so every upload and read was denied by
+// default - which is why attachments never appeared on the edit screen.
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Any signed-in user can read attachments (shared ledger); a user may
+    // only write/delete under their own {uid} folder.
+    match /attachments/{uid}/{file=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

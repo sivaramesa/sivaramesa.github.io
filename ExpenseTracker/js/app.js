@@ -325,7 +325,7 @@ async function openEdit(entry) {
       return;
     }
     try {
-      const files = await AttachmentStore.fetchAttachments(entry.attachmentPath);
+      const files = await AttachmentStore.fetchAttachments(entry.attachmentPath, entry.attachmentUrl);
       // Only add if the modal is still showing this same entry.
       if (UI.$('#edit-id').value !== entry.id) return;
       for (const f of files) {
@@ -333,7 +333,11 @@ async function openEdit(entry) {
       }
       renderEditAttachmentPreview();
     } catch (e) {
-      UI.$('#edit-attach-existing').textContent = 'Could not load existing attachments.';
+      // Make the real reason visible instead of a generic message - this is
+      // almost always a Storage CORS or rules problem on the bucket.
+      const msg = (e && e.message) || 'unknown error';
+      UI.$('#edit-attach-existing').textContent = 'Could not load existing attachments: ' + msg;
+      console.warn('Edit attachment load failed:', e);
     }
   }
 }

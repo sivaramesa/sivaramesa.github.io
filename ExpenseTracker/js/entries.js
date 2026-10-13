@@ -253,7 +253,8 @@ export const Entries = {
         kept: attachments.kept || [],
         added: attachments.added || [],
         hadAttachmentAtOpen: !!attachments.hadAttachmentAtOpen,
-        prevPath: existing.attachmentPath || null
+        prevPath: existing.attachmentPath || null,
+        prevUrl: existing.attachmentUrl || null
       });
     }
     return next;
@@ -297,7 +298,7 @@ export const Entries = {
       // has since landed - fold those files in instead of discarding them.
       if (!plan.hadAttachmentAtOpen && plan.prevPath) {
         try {
-          const already = await AttachmentStore.fetchAttachments(plan.prevPath);
+          const already = await AttachmentStore.fetchAttachments(plan.prevPath, plan.prevUrl);
           kept = already.map((f) => ({ name: f.name, data: f.data })).concat(kept);
         } catch (e) {
           console.warn('Could not merge newly-landed attachment before edit:', e && e.message);

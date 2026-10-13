@@ -161,20 +161,46 @@ export const AttachmentStore = {
    * Download and unzip an entry's attachment bundle into displayable items.
    * @returns {Promise<Array<{name:string, data:Uint8Array, blob:Blob}>>}
    */
-  async fetchAttachments(existingPath) {
-    if (!existingPath) return [];
-    try {
-      const bytes = await getBytes(ref(storage, existingPath));
-      const entries = readZip(bytes);
-      return entries.map((e) => ({
-        name: e.name,
-        data: e.data,
-        blob: new Blob([e.data], { type: guessType(e.name) })
-      }));
-    } catch (e) {
-      console.warn('Could not read existing attachment bundle:', e && e.message);
-      return [];
+  async fetchAttachments(existingPath, downloadUrl) {
+    if (!existingPath && !downloadUrl) return [];
+
+    let bytes = null;
+    let primaryErr = null;
+
+    // Preferred: SDK getBytes (uses the Storage REST endpoint). Needs the
+    // bucket CORS policy to allow this origin.
+    if (existingPath) {
+      try {
+        bytes = await getBytes(ref(storage, existingPath));
+      } catch (e) {
+        primaryErr = e;
+        console.warn('getBytes failed, will try download URL:', e && e.message);
+      }
     }
+
+    // Fallback: fetch the tokenized download URL saved on the entry. This is a
+    // plain cross-origin GET of the same object; it still needs CORS but takes
+    // a different code path and is what the list-view 📎 link already uses.
+    if (!bytes && downloadUrl) {
+      try {
+        const res = await fetch(downloadUrl);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        bytes = new Uint8Array(await res.arrayBuffer());
+      } catch (e) {
+        console.warn('Download-URL fetch failed:', e && e.message);
+        // Surface the original SDK error if we had one; it's usually clearer.
+        throw primaryErr || e;
+      }
+    }
+
+    if (!bytes) throw (primaryErr || new Error('Could not download attachment bundle.'));
+
+    const entries = readZip(bytes);
+    return entries.map((e) => ({
+      name: e.name,
+      data: e.data,
+      blob: new Blob([e.data], { type: guessType(e.name) })
+    }));
   },
 
   /**

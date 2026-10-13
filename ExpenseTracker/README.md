@@ -91,19 +91,21 @@ service cloud.firestore {
 }
 ```
 
-**Storage** (`Storage → Rules`) — a user can only write photo proofs under their own folder; any signed-in user can read them:
+**Storage** (`Storage → Rules`) — the app stores each entry's attachment bundle at `attachments/{uid}/{entryId}.zip`. A user can only write under their own `{uid}` folder; any signed-in user can read (shared ledger). These rules must match the upload path in `js/storage.js` (`attachments/${uid}/${entryId}.zip`) or uploads **and** reads will be denied. The repo ships these in `storage.rules`:
 
 ```
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /proofs/{uid}/{file} {
+    match /attachments/{uid}/{file=**} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == uid;
     }
   }
 }
 ```
+
+> If you previously used the `proofs/{uid}/{file}` rule, note the code now writes to `attachments/`, so that old rule no longer covers it.
 
 > Adjust the read scope if you want each user to see only their own data instead of a shared ledger.
 
